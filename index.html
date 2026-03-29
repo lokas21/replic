@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css">
 
   <style>
-    body, .jspsych-display-element { background: #000 !important; color: #fff; }
+    body, .jspsych-display-element { background: #3a3a3a !important; color: #fff; }
     .jspsych-content {
       max-width: 1000px; color: #fff;
       font-family: Arial, sans-serif;
@@ -265,11 +265,12 @@ function setContent(html) {
 // ════════════════════════════════════════════════════════════════
 //  AFFECT — tous les 9 items sur un seul écran (stacked)
 // ════════════════════════════════════════════════════════════════
-function makeAffectAllTrial(pEmo, pRate, isGreen) {
-  const color = isGreen ? '#0f0' : '#f44';
+function makeAffectAllTrial(pEmo, pRate, _unused) {
+  const color = '#fff';  // même couleur pour tous les items
 
   function buildHtml() {
-    const rows = EMOTION_ITEMS.map(emo => {
+    const orderedItems = shuffle(EMOTION_ITEMS);  // ordre aléatoire à chaque fois
+    const rows = orderedItems.map(emo => {
       const name = slug(emo);
       return `
         <div class="affect-row">
@@ -277,11 +278,11 @@ function makeAffectAllTrial(pEmo, pRate, isGreen) {
           <div class="affect-slider-wrap">
             <input type="range" name="${name}"
               class="affect-slider required-affect"
-              min="1" max="9" step="0.1" value="5">
+              min="0" max="100" step="1" value="50">
             <div class="tick-labels">
-              <span>1<br><small>Pas du tout</small></span>
-              <span>5</span>
-              <span>9<br><small>Extrêmement</small></span>
+              <span>0<br><small>Pas du tout</small></span>
+              <span>50</span>
+              <span>100<br><small>Extrêmement</small></span>
             </div>
           </div>
         </div>`;
@@ -320,8 +321,9 @@ function makeAffectAllTrial(pEmo, pRate, isGreen) {
       const resp = data.response || {};
       EMOTION_ITEMS.forEach(emo => {
         const name = slug(emo);
+        const val = resp[name];
         DATA[`${pEmo}_${name}`]  = emo;
-        DATA[`${pRate}_${name}`] = parseFloat(resp[name]) || 'NA';
+        DATA[`${pRate}_${name}`] = (val !== undefined && val !== '') ? parseFloat(val) : 'NA';
       });
     }
   };
@@ -334,7 +336,12 @@ function makeDatAllTrial(pImg, pRate) {
   let _imgs = [];
 
   function buildHtml() {
-    _imgs = shuffle(DAT_IMAGES).slice(0, 2);  // 2 images tirées aléatoirement parmi 4
+    // Toujours 1 AvR + 1 ApT, tirés aléatoirement dans leur catégorie
+    const AvRs = DAT_IMAGES.filter(p => p.includes('AvR'));
+    const ApTs = DAT_IMAGES.filter(p => p.includes('ApT'));
+    const pickedAvR = AvRs[Math.floor(Math.random() * AvRs.length)];
+    const pickedApT = ApTs[Math.floor(Math.random() * ApTs.length)];
+    _imgs = shuffle([pickedAvR, pickedApT]);
     const rows = _imgs.map(imgPath => {
       const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
       const name = slug(base);
@@ -468,6 +475,9 @@ function makeAngerTrial(sequence, rtList) {
         <p style="font-size:1.3em;letter-spacing:3px;margin:20px 0;">${sequence}</p>
         <input type="text" id="yc3_ans" maxlength="4" autocomplete="off"
           style="width:250px;font-size:1.4em;text-align:center;" placeholder="Réponse">
+        <p id="yc3_feedback" style="display:none;color:#f55;font-size:1.1em;font-weight:bold;margin-top:14px;">
+          ❌ Réponse incorrecte
+        </p>
         <p class="hint-text" style="margin-top:12px;">Appuyez sur <strong>ENTRÉE</strong> pour continuer.</p>
       `);
       document.getElementById('yc3_ans').focus();
@@ -476,7 +486,16 @@ function makeAngerTrial(sequence, rtList) {
         clearInterval(timerInterval);
         document.removeEventListener('keydown', onKey);
         rtList.push(Math.round(performance.now() - t0));
-        jsPsych.finishTrial({});
+        // Frustration: show "Réponse incorrecte" for 1s before moving on
+        if (condition_groupe === 'Frustration') {
+          const input = document.getElementById('yc3_ans');
+          if (input) { input.disabled = true; input.style.borderColor = '#f55'; }
+          const fb = document.getElementById('yc3_feedback');
+          if (fb) { fb.style.display = 'block'; }
+          setTimeout(() => jsPsych.finishTrial({}), 1000);
+        } else {
+          jsPsych.finishTrial({});
+        }
       }
 
       if (condition_groupe === 'Frustration') {
@@ -512,16 +531,14 @@ function makeEmoInduction() {
       setContent(`
         <p style="font-size:0.9em;color:#ddd;max-width:750px;margin:0 auto 12px;line-height:1.6;">${consigne}</p>
         <textarea id="yc3_emo_text" rows="10"
-          style="width:86%;resize:none;font-size:1em;padding:8px;background:#111;color:#fff;border:2px solid #555;"></textarea>
-        <p id="yc3_emo_timer" class="timer-yc3" style="margin-top:10px;"></p>
+          style="width:86%;resize:none;font-size:1em;padding:8px;background:#2a2a2a;color:#fff;border:2px solid #666;"></textarea>
       `);
       document.getElementById('yc3_emo_text').focus();
 
+      // Timer silencieux — pas affiché, passage automatique après 120 s
       const t0 = performance.now();
       const iv = setInterval(() => {
-        const rem = Math.max(0, 120 - (performance.now() - t0) / 1000);
-        const el = document.getElementById('yc3_emo_timer');
-        if (el) el.textContent = `Temps restant : ${rem.toFixed(0)} s`;
+        const rem = 120 - (performance.now() - t0) / 1000;
         if (rem <= 0) { clearInterval(iv); jsPsych.finishTrial({}); }
       }, 500);
     }
