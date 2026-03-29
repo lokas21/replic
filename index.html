@@ -715,45 +715,23 @@ async function runExperiment() {
     }
   });
 
-  // ── CODE ANONYME ────────────────────────────────────────────
+  // ── SEXE ────────────────────────────────────────────────────
   tl.push({
     type: jsPsychHtmlKeyboardResponse,
     stimulus: '', choices: 'NO_KEYS',
     on_load() {
       setContent(`
-        <div style="text-align:left;font-size:1.1em;max-width:860px;margin:0 auto 20px;line-height:2.1;color:#fff;">
-          Veuillez entrer votre <strong>code anonyme</strong> selon les instructions suivantes :
-          <br><br>
-          1. 1ère lettre du prénom de votre <strong>mère</strong> (majuscule)<br>
-          2. 1ère lettre du prénom de votre <strong>père</strong> (majuscule)<br>
-          3. <strong>Deux derniers chiffres</strong> de votre année de naissance<br>
-          4. 1ère lettre de votre <strong>ville de naissance</strong> (majuscule)<br>
-          5. <strong>Dernière lettre</strong> de votre nom de famille (minuscule)<br>
-          <br>
-          Exemple : Mère = Sophie, Père = Jean, né en 1994, ville = Lyon, nom = Martin
-          → <strong>SJ94Ln</strong>
-          <br><br>
-          Écrivez ce code dans la case, puis appuyez sur <strong>ENTRÉE</strong>.
-        </div>
-        <input type="text" id="code_input" maxlength="6"
-          style="width:210px;font-size:1.3em;text-align:center;" autocomplete="off" placeholder="SJ94Ln">
-        <p id="code_err" class="error-yc3"></p>
+        <p style="font-size:1.15em;margin-bottom:24px;">Quel est votre sexe ?</p>
+        ${['Femme','Homme','Autre','Ne souhaite pas répondre']
+          .map(v => `<button class="btn-yc3" data-val="${v}" style="display:block;margin:10px auto;min-width:300px;">${v}</button>`)
+          .join('')}
       `);
-      document.getElementById('code_input').focus();
-
-      function onKey(e) {
-        if (e.key !== 'Enter') return;
-        const code = (document.getElementById('code_input').value || '').trim();
-        if (/^[A-Z]{2}[0-9]{2}[A-Z][a-z]$/.test(code)) {
-          document.removeEventListener('keydown', onKey);
-          capture('textbox_code', code);
+      document.querySelectorAll('.btn-yc3[data-val]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          capture('choix_sexe', btn.dataset.val);
           jsPsych.finishTrial({});
-        } else {
-          document.getElementById('code_err').textContent =
-            '⛔ Format invalide. Exemple attendu : SJ94Ln';
-        }
-      }
-      document.addEventListener('keydown', onKey);
+        });
+      });
     }
   });
 
