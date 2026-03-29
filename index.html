@@ -94,10 +94,10 @@
     /* DAT vertical rows */
     .dat-row-v {
       display: flex; align-items: center;
-      margin-bottom: 48px; gap: 36px;
+      margin-bottom: 56px; gap: 44px;
     }
     .dat-img-v {
-      width: 280px; height: 220px; object-fit: contain;
+      width: 380px; height: 300px; object-fit: contain;
       border: 1px solid #666; background: #1a1a1a; flex-shrink: 0;
     }
     .dat-slider-v { flex: 1; }
@@ -108,7 +108,7 @@
     /* Sit controle */
     .sit-row-v { margin-bottom: 44px; }
     .sit-question-v {
-      font-size: 1.15em; color: #fff; margin-bottom: 20px; line-height: 2.0;
+      font-size: 1.15em; color: #fff; margin-bottom: 50px; line-height: 2.0;
     }
     .sit-slider-v input[type="range"] {
       width: 100%; margin: 14px 0; accent-color: #aaa;
@@ -462,7 +462,10 @@ const aff_consigne = {
 };
 
 // ── Tâche de suites de nombres ────────────────────────────────
+let _angerTrialIndex = 0;  // global counter reset at each block
+
 function makeAngerTrial(sequence, rtList) {
+  const _myIndex = _angerTrialIndex++;  // capture index for this trial
   return {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: '', choices: 'NO_KEYS',
@@ -478,9 +481,7 @@ function makeAngerTrial(sequence, rtList) {
         <p style="font-size:1.3em;letter-spacing:3px;margin:20px 0;">${sequence}</p>
         <input type="text" id="yc3_ans" maxlength="4" autocomplete="off"
           style="width:250px;font-size:1.4em;text-align:center;" placeholder="Réponse">
-        <p id="yc3_feedback" style="display:none;color:#f55;font-size:1.1em;font-weight:bold;margin-top:14px;">
-          ❌ Réponse incorrecte
-        </p>
+        <p id="yc3_feedback" style="display:none;font-size:1.1em;font-weight:bold;margin-top:14px;"></p>
         <p class="hint-text" style="margin-top:12px;">Appuyez sur <strong>ENTRÉE</strong> pour continuer.</p>
       `);
       document.getElementById('yc3_ans').focus();
@@ -489,13 +490,22 @@ function makeAngerTrial(sequence, rtList) {
         clearInterval(timerInterval);
         document.removeEventListener('keydown', onKey);
         rtList.push(Math.round(performance.now() - t0));
-        // Frustration: show "Réponse incorrecte" for 1s before moving on
         if (condition_groupe === 'Frustration') {
           const input = document.getElementById('yc3_ans');
-          if (input) { input.disabled = true; input.style.borderColor = '#f55'; }
+          const givenVal = input ? input.value.trim() : '';
+          // Première séquence : réponse 23 = correcte, sinon toujours incorrecte
+          const isCorrect = (_myIndex === 0 && givenVal === '23');
+          if (input) {
+            input.disabled = true;
+            input.style.borderColor = isCorrect ? '#4f4' : '#f55';
+          }
           const fb = document.getElementById('yc3_feedback');
-          if (fb) { fb.style.display = 'block'; }
-          setTimeout(() => jsPsych.finishTrial({}), 1000);
+          if (fb) {
+            fb.style.display = 'block';
+            fb.style.color   = isCorrect ? '#4f4' : '#f55';
+            fb.textContent   = isCorrect ? '✅ Réponse correcte' : '❌ Réponse incorrecte';
+          }
+          setTimeout(() => jsPsych.finishTrial({}), 1200);
         } else {
           jsPsych.finishTrial({});
         }
@@ -835,6 +845,7 @@ async function runExperiment() {
   });
 
   // Séquences colère
+  _angerTrialIndex = 0;  // reset compteur pour ce bloc
   sequences.forEach(seq => {
     tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs)], conditional_function: isColere });
   });
@@ -881,6 +892,7 @@ async function runExperiment() {
   });
 
   // Séquences colère (bis)
+  _angerTrialIndex = 0;  // reset compteur pour ce bloc bis
   sequences.forEach(seq => {
     tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs_BIS)], conditional_function: isTristesse });
   });
