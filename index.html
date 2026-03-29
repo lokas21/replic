@@ -281,7 +281,7 @@ function makeAffectAllTrial(pEmo, pRate, _unused) {
           <div class="affect-slider-wrap">
             <input type="range" name="${name}"
               class="affect-slider required-affect"
-              min="0" max="100" step="1" value="50">
+              min="0" max="100" step="1" value="0">
             <div class="tick-labels">
               <span>0<br><small>Pas du tout</small></span>
               <span>50</span>
@@ -354,7 +354,7 @@ function makeDatAllTrial(pImg, pRate) {
           <div class="dat-slider-v">
             <input type="range" name="${name}"
               class="required-dat"
-              min="1" max="5" step="0.1" value="3">
+              min="1" max="5" step="0.1" value="1">
             <div class="tick-labels">
               <span>1<br><small>Pas du tout</small></span>
               <span>3</span>
@@ -418,12 +418,12 @@ function makeSitControleTrial(prefix) {
         </p>
         <div class="sit-row-v">
           <p class="sit-question-v">
-            « Dans quelle mesure vous sentez-vous en contrôle de cette expérience en ce moment ? »
+            Dans quelle mesure vous sentez-vous en contrôle de cette expérience en ce moment ?
           </p>
           <div class="sit-slider-v">
             <input type="range" name="sit_controle"
               class="required-sit"
-              min="0" max="100" step="0.1" value="50">
+              min="0" max="100" step="0.1" value="0">
             <div class="tick-labels">
               <span>Aucun contrôle</span>
               <span>Contrôle total</span>
@@ -458,7 +458,7 @@ const aff_consigne = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus: '<p style="color:#fff;font-size:1.4em;line-height:2.0;">Nous nous intéressons maintenant à vos ressentis.<br><br>Répondez aux questions suivantes.</p>',
   choices: 'NO_KEYS',
-  trial_duration: 8000
+  trial_duration: 3000
 };
 
 // ── Tâche de suites de nombres ────────────────────────────────
@@ -661,7 +661,7 @@ async function runExperiment() {
       <p>Cette recherche est menée dans le cadre du travail de thèse de Madame Yasmine Capela (UNIL), sous la direction de la Prof. Elise Dan-Glauser.</p>
       <br>
       <p style="font-weight:bold;font-size:1.1em;">Déroulement de l'étude</p>
-      <p>L'étude dure environ 20 minutes et se déroule exclusivement sur l'ordinateur du laboratoire LERB.</p>
+      <p>L'étude dure environ 20 minutes et se déroule exclusivement en ligne, sur un ordinateur.</p>
       <br><br>
       <p style="font-weight:bold;">Appuyez sur ENTRÉE pour continuer.</p>
     </div>`,
@@ -977,7 +977,6 @@ async function runExperiment() {
       <br>
       <p style="font-weight:bold;font-size:1.1em;">Contacts</p>
       <p><a href="mailto:yasmine.capelaabdalla@unil.ch" style="color:#adf;">yasmine.capelaabdalla@unil.ch</a></p>
-      <p><a href="mailto:elise.danglauser@unil.ch" style="color:#adf;">elise.danglauser@unil.ch</a></p>
       <br><br>
       <p style="font-weight:bold;">Appuyez sur ENTRÉE pour terminer l'expérience.</p>
     </div>`
