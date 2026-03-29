@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YC3 — Étude</title>
+
+  <script src="https://unpkg.com/jspsych@7.3.4"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.3"></script>
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css">
+
+  <style>
+    body, .jspsych-display-element { background: #000 !important; color: #fff; }
+    .jspsych-content {
+      max-width: 1000px; color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    /* ── Buttons ── */
+    .btn-yc3 {
+      background: #444; color: #fff; border: none;
+      padding: 12px 40px; font-size: 1.05em;
+      cursor: pointer; border-radius: 3px; margin: 8px;
+      display: inline-block;
+    }
+    .btn-yc3:hover { background: #666; }
+
+    /* ── Inputs ── */
+    input[type="text"], textarea {
+      background: #111; color: #fff;
+      border: 2px solid #555; font-size: 1em;
+      padding: 6px 10px; border-radius: 2px;
+    }
+    input[type="text"]:focus, textarea:focus {
+      border-color: #aaa; outline: none;
+    }
+
+    /* ── Slider ── */
+    input[type="range"] {
+      -webkit-appearance: none; width: 85%;
+      height: 6px; background: #888; border-radius: 3px;
+      outline: none; cursor: pointer; display: block;
+      margin: 16px auto;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 22px; height: 22px;
+      background: red; border-radius: 50%; cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 22px; height: 22px;
+      background: red; border-radius: 50%; border: none; cursor: pointer;
+    }
+
+    /* ── Misc ── */
+    .error-yc3  { color: #f55; font-size: 0.9em; min-height: 1.4em; margin-top: 6px; }
+    .timer-yc3  { color: #f55; font-size: 1.1em; font-weight: bold; }
+    .hint-text  { color: #aaa; font-size: 0.85em; margin-top: 8px; }
+    .green-lbl  { color: #0f0; }
+    .red-lbl    { color: #f44; }
+    .ticks-row  {
+      display: flex; justify-content: space-between;
+      width: 85%; margin: 0 auto 4px; color: #aaa; font-size: 0.82em;
+    }
+
+  </style>
+</head>
+<body>
+
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   YC3  —  jsPsych 7  —  URL unique, allocation automatique
+   ═══════════════════════════════════════════════════════════════════
+
+   Allocation aléatoire stratifiée — 100 % dans le script, aucun serveur.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────
+   FICHIERS à placer à la racine du repo GitHub
+   ─────────────────────────────────────────────────────────────────
+   sequences_Frustration.csv   — colonne "sequence"
+   sequences_Controle.csv      — colonne "sequence"
+   welcome_1.png / welcome_2.png
+   debrief_1.png / debrief_2.png / debrief_3.png
+   dat_images/ApT1.png, ApT2.png, AvR1.png, AvR2.png
+   ───────────────────────────────────────────────────────────────── */
+
+// ────────────────────────────────────────────────────────────────
+//  ÉTAT GLOBAL
+// ────────────────────────────────────────────────────────────────
+let condition_groupe = null;
+let condition_emo    = null;
+let ordre_condition  = null;
+let sequences        = [];
+
+const DATA      = {};
+const ANGER_RTs     = [];
+const ANGER_RTs_BIS = [];
+
+// ────────────────────────────────────────────────────────────────
+//  UTILITAIRES
+// ────────────────────────────────────────────────────────────────
+function slug(s) {
+  if (!s) return 'na';
+  return s.toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'na';
+}
+
+function capture(key, val) {
+  DATA[key] = (val === null || val === undefined || val === '') ? 'NA' : val;
+}
+
+function meanMs(arr) {
+  if (!arr.length) return 'NA';
+  return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function parseCSV(text) {
+  // Strip BOM if present
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.trim().split(/\r?\n/);
+  // Auto-detect separator: semicolon or comma
+  const sep = lines[0].includes(';') ? ';' : ',';
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
+    const obj  = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+    return obj;
+  });
+}
+
+// ── Participant ID ───────────────────────────────────────────────
+(function() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const pid = `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  capture('participant_id', pid);
+})();
+
+// ── Sauvegarde des données (CSV local) ─────────────────────────────
+function downloadCSV() {
+  capture('anger_rt_enter_ms',     meanMs(ANGER_RTs));
+  capture('anger_rt_enter_ms_bis', meanMs(ANGER_RTs_BIS));
+  const keys = Object.keys(DATA);
+  const csv  = [
+    keys.join(','),
+    keys.map(k => `"${String(DATA[k]).replace(/"/g,'""')}"`).join(',')
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `YC3_${DATA.participant_id || 'anon'}_participants.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+
+
+// ────────────────────────────────────────────────────────────────
+//  CONSTANTES
+// ────────────────────────────────────────────────────────────────
+const EMOTION_ITEMS = [
+  'Je me sens contrarié(e)', 'Je me sens irritable', 'Je me sens en colère',
+  'Je me sens triste',       'Je me sens morose',    'Je me sens déprimé(e)',
+  'Je me sens joyeux(se)',   'Je me sens heureux(se)', 'Je me sens détendu(e)'
+];
+
+const DAT_IMAGES = [
+  'dat_images/ApT1.png', 'dat_images/ApT2.png',
+  'dat_images/AvR1.png', 'dat_images/AvR2.png'
+];
+
+// ────────────────────────────────────────────────────────────────
+//  HELPER : injecter du contenu dans le display jsPsych
+// ────────────────────────────────────────────────────────────────
+function setContent(html) {
+  const el = document.querySelector('.jspsych-content');
+  if (el) el.innerHTML =
+    `<div style="color:#fff;font-family:Arial,sans-serif;text-align:center;max-width:900px;margin:auto;">${html}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BUILDERS DE TRIALS
+// ════════════════════════════════════════════════════════════════
+
+// ── Affect slider (1-9) ────────────────────────────────────────
+function makeAffectTrial(emotion, pEmo, pRate, isGreen) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      const color = isGreen ? '#0f0' : '#f44';
+      const ticks = Array.from({length: 9}, (_, i) =>
+        `<span>${i+1}</span>`).join('');
+      setContent(`
+        <p style="font-size:0.9em;color:#ddd;">
+          À quelle intensité ressentez-vous à ce moment précis les émotions suivantes ?<br>
+          <em>(1 = pas du tout &nbsp;—&nbsp; 9 = extrêmement)</em>
+        </p>
+        <p style="font-size:1.6em;font-weight:bold;color:${color};margin:12px 0;">${emotion}</p>
+        <input type="range" id="yc3_s" min="1" max="9" step="0.1"
+          oninput="window._sMoved=true; document.getElementById('yc3_sv').textContent=parseFloat(this.value).toFixed(1);">
+        <div class="ticks-row">${ticks}</div>
+        <p class="hint-text">Valeur sélectionnée : <span id="yc3_sv" style="color:#fff;">—</span></p>
+        <p id="yc3_err" class="error-yc3"></p>
+        <p class="hint-text">Déplacez le curseur, puis appuyez sur <strong>ENTRÉE</strong>.</p>
+      `);
+      window._sMoved = false;
+      document.getElementById('yc3_s').value = 5;
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        if (!window._sMoved) {
+          document.getElementById('yc3_err').textContent =
+            'Merci de déplacer le curseur avant de valider.';
+          return;
+        }
+        document.removeEventListener('keydown', onKey);
+        const rating = parseFloat(document.getElementById('yc3_s').value);
+        const s = slug(emotion);
+        DATA[`${pEmo}_${s}`]  = emotion;
+        DATA[`${pRate}_${s}`] = rating;
+        jsPsych.finishTrial({ rating });
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  };
+}
+
+// ── DAT image + slider (1-5) ───────────────────────────────────
+function makeDatTrial(imgPath, pImg, pRate) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
+      setContent(`
+        <p style="font-size:0.88em;color:#ddd;">
+          Regardez ce dessin. À quel point celui-ci correspond à ce que vous auriez envie de faire maintenant ?<br>
+          <em>1 = pas du tout &nbsp;—&nbsp; 5 = tout à fait</em>
+        </p>
+        <img src="${imgPath}" style="width:230px;height:230px;object-fit:contain;margin:10px auto;display:block;">
+        <input type="range" id="yc3_s" min="1" max="5" step="0.1"
+          oninput="window._sMoved=true; document.getElementById('yc3_sv').textContent=parseFloat(this.value).toFixed(1);">
+        <div class="ticks-row">
+          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+        </div>
+        <p class="hint-text">Valeur sélectionnée : <span id="yc3_sv" style="color:#fff;">—</span></p>
+        <p id="yc3_err" class="error-yc3"></p>
+        <p class="hint-text">Déplacez le curseur, puis appuyez sur <strong>ENTRÉE</strong>.</p>
+      `);
+      window._sMoved = false;
+      document.getElementById('yc3_s').value = 3;
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        if (!window._sMoved) {
+          document.getElementById('yc3_err').textContent =
+            'Merci de déplacer le curseur avant de valider.';
+          return;
+        }
+        document.removeEventListener('keydown', onKey);
+        const rating = parseFloat(document.getElementById('yc3_s').value);
+        const s = slug(base);
+        DATA[`${pImg}_${s}`]  = base;
+        DATA[`${pRate}_${s}`] = rating;
+        jsPsych.finishTrial({ rating });
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  };
+}
+
+// ── Blocs shufflés ────────────────────────────────────────────
+function makeAffectBlock(pEmo, pRate, isGreen) {
+  return shuffle(EMOTION_ITEMS).map(e => makeAffectTrial(e, pEmo, pRate, isGreen));
+}
+function makeDatBlock(pImg, pRate) {
+  return shuffle(DAT_IMAGES).map(img => makeDatTrial(img, pImg, pRate));
+}
+
+// ── Consigne affect (8 s) ─────────────────────────────────────
+const aff_consigne = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<p style="color:#fff;font-size:1.1em;">Nous nous intéressons maintenant à vos ressentis.<br><br>Répondez aux questions suivantes.</p>',
+  choices: 'NO_KEYS',
+  trial_duration: 8000
+};
+
+// ── Tâche de suites de nombres ────────────────────────────────
+function makeAngerTrial(sequence, rtList) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      const t0 = performance.now();
+      let timerInterval = null;
+
+      const timerHTML = (condition_groupe === 'Frustration')
+        ? `<p id="yc3_timer" class="timer-yc3" style="margin-bottom:10px;"></p>` : '';
+
+      setContent(`
+        ${timerHTML}
+        <p style="font-size:1.3em;letter-spacing:3px;margin:20px 0;">${sequence}</p>
+        <input type="text" id="yc3_ans" maxlength="4" autocomplete="off"
+          style="width:250px;font-size:1.4em;text-align:center;" placeholder="Réponse">
+        <p class="hint-text" style="margin-top:12px;">Appuyez sur <strong>ENTRÉE</strong> pour continuer.</p>
+      `);
+      document.getElementById('yc3_ans').focus();
+
+      function finish() {
+        clearInterval(timerInterval);
+        document.removeEventListener('keydown', onKey);
+        rtList.push(Math.round(performance.now() - t0));
+        jsPsych.finishTrial({});
+      }
+
+      if (condition_groupe === 'Frustration') {
+        const deadline = performance.now() + 30000;
+        timerInterval = setInterval(() => {
+          const rem = Math.max(0, (deadline - performance.now()) / 1000);
+          const el = document.getElementById('yc3_timer');
+          if (el) el.textContent = `Temps restant : ${rem.toFixed(1)} s`;
+          if (rem <= 0) finish();
+        }, 100);
+      }
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        const val = (document.getElementById('yc3_ans') || {}).value?.trim() ?? '';
+        if (/^\d{1,4}$/.test(val)) finish();
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  };
+}
+
+// ── Induction émotionnelle (120 s) ───────────────────────────
+function makeEmoInduction() {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      const consigne = (condition_emo === 'triste')
+        ? 'Veuillez décrire un souvenir <strong>TRISTE</strong>, récent, ayant provoqué des émotions fortes. Soyez aussi précis et détaillé que possible. Vous avez 2 minutes pour l\'écrire ci-dessous. <em>(Vous passerez à la tâche suivante automatiquement à la fin des 2 minutes.)</em>'
+        : 'Veuillez décrire une situation <strong>NEUTRE</strong> de votre vie quotidienne. Par exemple, détaillez la couleur de vos vêtements. Vous avez 2 minutes pour écrire votre description ci-dessous. <em>(Vous passerez automatiquement à la tâche suivante à la fin du temps imparti.)</em>';
+
+      setContent(`
+        <p style="font-size:0.9em;color:#ddd;max-width:750px;margin:0 auto 12px;line-height:1.6;">${consigne}</p>
+        <textarea id="yc3_emo_text" rows="10"
+          style="width:86%;resize:none;font-size:1em;padding:8px;background:#111;color:#fff;border:2px solid #555;"></textarea>
+        <p id="yc3_emo_timer" class="timer-yc3" style="margin-top:10px;"></p>
+      `);
+      document.getElementById('yc3_emo_text').focus();
+
+      const t0 = performance.now();
+      const iv = setInterval(() => {
+        const rem = Math.max(0, 120 - (performance.now() - t0) / 1000);
+        const el = document.getElementById('yc3_emo_timer');
+        if (el) el.textContent = `Temps restant : ${rem.toFixed(0)} s`;
+        if (rem <= 0) { clearInterval(iv); jsPsych.finishTrial({}); }
+      }, 500);
+    }
+  };
+}
+
+// ── Ecran clavier libre (ENTER pour continuer) ────────────────
+function enterScreen(htmlContent) {
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(htmlContent);
+      function onKey(e) {
+        if (e.key === 'Enter') {
+          document.removeEventListener('keydown', onKey);
+          jsPsych.finishTrial({});
+        }
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  POINT D'ENTRÉE PRINCIPAL  (async pour fetch allocation + CSV)
+// ════════════════════════════════════════════════════════════════
+async function runExperiment() {
+
+  // ── 1. ALLOCATION ALÉATOIRE STRATIFIÉE (100 % dans le script) ─────
+  //
+  // Les 8 cellules du plan 2×2×2 sont représentées dans ALLOCATION_TABLE.
+  // La table est d'abord mélangée (Fisher-Yates sur le seed timestamp),
+  // puis un index est tiré au hasard parmi toutes les cellules.
+  // Sur N=80, chaque cellule reçoit ~10 participants en espérance.
+  // ─────────────────────────────────────────────────────────────────────
+  const ALLOCATION_TABLE = [
+    // 25 répétitions × 8 cellules = 200 entrées
+    ...Array(25).fill([
+      { cg: 'Frustration', ce: 'triste',  oc: 'colere_dabord'     },
+      { cg: 'Frustration', ce: 'triste',  oc: 'tristesse_dabord'  },
+      { cg: 'Frustration', ce: 'neutre',  oc: 'colere_dabord'     },
+      { cg: 'Frustration', ce: 'neutre',  oc: 'tristesse_dabord'  },
+      { cg: 'Controle',    ce: 'triste',  oc: 'colere_dabord'     },
+      { cg: 'Controle',    ce: 'triste',  oc: 'tristesse_dabord'  },
+      { cg: 'Controle',    ce: 'neutre',  oc: 'colere_dabord'     },
+      { cg: 'Controle',    ce: 'neutre',  oc: 'tristesse_dabord'  },
+    ]).flat()
+  ];
+
+  // Tirage aléatoire dans la table complète (chaque appel est indépendant)
+  const picked = ALLOCATION_TABLE[Math.floor(Math.random() * ALLOCATION_TABLE.length)];
+  condition_groupe = picked.cg;
+  condition_emo    = picked.ce;
+  ordre_condition  = picked.oc;
+  capture('alloc_method', 'stratified_random');
+
+  capture('condition_groupe', condition_groupe);
+  capture('condition_emo',    condition_emo);
+  capture('ordre_condition',  ordre_condition);
+
+  // ── 2. CHARGE LES SÉQUENCES ───────────────────────────────
+  const csvFile = (condition_groupe === 'Frustration')
+    ? 'sequences_Frustration.csv' : 'sequences_Controle.csv';
+  try {
+    const res  = await fetch(csvFile);
+    const text = await res.text();
+    sequences  = parseCSV(text).map(r => r['sequence']).filter(Boolean);
+  } catch(e) {
+    console.warn(csvFile + ' non trouvé — séquences de démonstration.');
+    sequences = [
+      '2 – 4 – 6 – 8 – 10 – 12 – 14 – ?',
+      '1 – 3 – 6 – 10 – 15 – 21 – ?',
+      '100 – 50 – 25 – 12.5 – ?',
+      '3 – 6 – 12 – 24 – 48 – ?',
+      '1 – 1 – 2 – 3 – 5 – 8 – 13 – ?',
+      '81 – 27 – 9 – 3 – ?',
+      '2 – 6 – 18 – 54 – 162 – ?'
+    ];
+  }
+
+
+  // ════════════════════════════════════════════════════════════
+  //  CONSTRUCTION DE LA TIMELINE
+  // ════════════════════════════════════════════════════════════
+  const jsPsych = initJsPsych({
+    on_finish: async function() {
+      downloadCSV();
+      document.querySelector('.jspsych-content').innerHTML =
+        '<p style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;">Thank you for your patience.</p>';
+    }
+  });
+
+  const tl = [];
+
+  // ── BIENVENIDA ──────────────────────────────────────────────
+  for (const img of ['welcome_1.png', 'welcome_2.png']) {
+    tl.push({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<img src="${img}" style="max-width:98vw;max-height:90vh;object-fit:contain;">`,
+      choices: ['Enter']
+    });
+  }
+
+  // ── CONSENTEMENT ────────────────────────────────────────────
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(`
+        <div style="text-align:left;font-size:0.87em;max-width:750px;margin:0 auto 20px;line-height:1.65;color:#ddd;">
+          Dans le cadre d'un consentement de participation, vous acceptez les points suivants.
+          Si vous ne consentez pas à une des deux affirmations, vous pouvez quitter la page.
+          <br><br>
+          <strong>1.</strong> L'utilisation des données à des fins scientifiques et la publication des résultats
+          de la recherche dans des revues ou livres scientifiques, étant entendu que les données resteront
+          anonymes et qu'aucune information ne sera donnée sur mon identité.
+          <br><br>
+          <strong>2.</strong> L'utilisation des données à des fins pédagogiques (cours et séminaires de
+          formations d'étudiants ou de professionnels soumis au secret professionnel).
+        </div>
+        <button class="btn-yc3" id="consent_btn">Je consens.</button>
+      `);
+      document.getElementById('consent_btn').addEventListener('click', () =>
+        jsPsych.finishTrial({}));
+    }
+  });
+
+  // ── CODE ANONYME ────────────────────────────────────────────
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(`
+        <div style="text-align:left;font-size:0.87em;max-width:720px;margin:0 auto 16px;line-height:1.65;color:#ddd;">
+          Veuillez entrer votre <strong>code anonyme</strong> selon les instructions suivantes :
+          <br><br>
+          1. 1ère lettre du prénom de votre <strong>mère</strong> (majuscule)<br>
+          2. 1ère lettre du prénom de votre <strong>père</strong> (majuscule)<br>
+          3. <strong>Deux derniers chiffres</strong> de votre année de naissance<br>
+          4. 1ère lettre de votre <strong>ville de naissance</strong> (majuscule)<br>
+          5. <strong>Dernière lettre</strong> de votre nom de famille (minuscule)<br>
+          <br>
+          Exemple : Mère = Sophie, Père = Jean, né en 1994, ville = Lyon, nom = Martin
+          → <strong>SJ94Ln</strong>
+          <br><br>
+          Écrivez ce code dans la case, puis appuyez sur <strong>ENTRÉE</strong>.
+        </div>
+        <input type="text" id="code_input" maxlength="6"
+          style="width:210px;font-size:1.3em;text-align:center;" autocomplete="off" placeholder="SJ94Ln">
+        <p id="code_err" class="error-yc3"></p>
+      `);
+      document.getElementById('code_input').focus();
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        const code = (document.getElementById('code_input').value || '').trim();
+        if (/^[A-Z]{2}[0-9]{2}[A-Z][a-z]$/.test(code)) {
+          document.removeEventListener('keydown', onKey);
+          capture('textbox_code', code);
+          jsPsych.finishTrial({});
+        } else {
+          document.getElementById('code_err').textContent =
+            '⛔ Format invalide. Exemple attendu : SJ94Ln';
+        }
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  });
+
+  // ── GENRE ───────────────────────────────────────────────────
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(`
+        <p style="font-size:1.15em;margin-bottom:20px;">Choisissez votre genre :</p>
+        ${['Femme','Homme','Non binaire','Ne souhaite pas répondre']
+          .map(v => `<button class="btn-yc3" data-val="${v}" style="display:block;margin:8px auto;min-width:280px;">${v}</button>`)
+          .join('')}
+      `);
+      document.querySelectorAll('.btn-yc3[data-val]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          capture('choix_genre', btn.dataset.val);
+          jsPsych.finishTrial({});
+        });
+      });
+    }
+  });
+
+  // ── DATE DE NAISSANCE ───────────────────────────────────────
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(`
+        <p style="font-size:1.1em;">Quelle est votre date de naissance ?<br>
+          <span class="hint-text">(format jj.mm.aaaa)</span>
+        </p>
+        <input type="text" id="age_input" maxlength="10"
+          style="width:220px;font-size:1.3em;text-align:center;margin-top:14px;"
+          placeholder="jj.mm.aaaa" autocomplete="off">
+        <p id="age_err" class="error-yc3"></p>
+      `);
+      document.getElementById('age_input').focus();
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        const raw   = (document.getElementById('age_input').value || '').trim();
+        const parts = raw.split('.');
+        if (parts.length === 3) {
+          const [j, m, a] = parts;
+          if (/^\d{2}$/.test(j) && parseInt(j) >= 1 && parseInt(j) <= 31 &&
+              /^\d{2}$/.test(m) && parseInt(m) >= 1 && parseInt(m) <= 12 &&
+              /^\d{4}$/.test(a)) {
+            document.removeEventListener('keydown', onKey);
+            capture('date_naissance', raw);
+            jsPsych.finishTrial({});
+            return;
+          }
+        }
+        document.getElementById('age_err').textContent =
+          '❌ Format invalide. Utilisez : jj.mm.aaaa';
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────
+  //  ÉVALUATION AFFECTIVE BASELINE
+  // ────────────────────────────────────────────────────────────
+  tl.push(aff_consigne);
+  makeAffectBlock('emotion', 'affect_rating', false).forEach(t => tl.push(t));
+  makeDatBlock('dat_images', 'slider_dat1_rating').forEach(t => tl.push(t));
+
+  // ══════════════════════════════════════════════════════════════
+  //  BRANCHE A  —  COLÈRE D'ABORD
+  // ══════════════════════════════════════════════════════════════
+  const isColere = () => ordre_condition === 'colere_dabord';
+
+  // Consigne tâche nombres
+  tl.push({
+    timeline: [enterScreen(`
+      <p style="font-size:0.88em;color:#ddd;max-width:750px;margin:0 auto;text-align:left;line-height:1.65;">
+        Dans cette tâche, vous allez voir des <strong>suites de chiffres</strong>.<br><br>
+        Chaque suite suit une règle logique. Votre objectif est de la découvrir et de compléter
+        la suite avec le bon chiffre.<br><br>
+        Exemple : 2 – 4 – 6 – 8 – 10 – 12 – 14 – ?<br>
+        Solution : La règle est d'ajouter 2. La réponse est <strong>16</strong>.<br>
+        Tapez "16" puis appuyez sur ENTRÉE pour passer à la suite.<br><br>
+        Appuyez sur <strong>ENTRÉE</strong> pour commencer.
+      </p>
+    `)],
+    conditional_function: isColere
+  });
+
+  // Séquences colère
+  sequences.forEach(seq => {
+    tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs)], conditional_function: isColere });
+  });
+
+  // Affect 2 — post-colère
+  tl.push({ timeline: [aff_consigne], conditional_function: isColere });
+  makeAffectBlock('emotion2', 'affect2_rating', true).forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isColere }));
+  makeDatBlock('dat2_images', 'slider_dat2_rating').forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isColere }));
+
+  // Induction émotionnelle
+  tl.push({ timeline: [makeEmoInduction()], conditional_function: isColere });
+
+  // Affect 3 — post-emo
+  tl.push({ timeline: [aff_consigne], conditional_function: isColere });
+  makeAffectBlock('emotion3', 'affect3_rating', true).forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isColere }));
+  makeDatBlock('dat3_images', 'slider_dat3_rating').forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isColere }));
+
+  // ══════════════════════════════════════════════════════════════
+  //  BRANCHE B  —  TRISTESSE D'ABORD
+  // ══════════════════════════════════════════════════════════════
+  const isTristesse = () => ordre_condition === 'tristesse_dabord';
+
+  // Induction émotionnelle
+  tl.push({ timeline: [makeEmoInduction()], conditional_function: isTristesse });
+
+  // Affect 2 — post-emo
+  tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
+  makeAffectBlock('emotion2_bis', 'affect2_bis_rating', true).forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isTristesse }));
+  makeDatBlock('dat4_images', 'slider_dat4_rating').forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isTristesse }));
+
+  // Consigne tâche nombres (bis)
+  tl.push({
+    timeline: [enterScreen(`
+      <p style="font-size:0.88em;color:#ddd;max-width:750px;margin:0 auto;text-align:left;line-height:1.65;">
+        Vous allez maintenant voir des suites de chiffres.<br><br>
+        Exemple : 2 – 4 – 6 – 8 – 10 – 12 – 14 – ?  →  Réponse : <strong>16</strong><br><br>
+        Appuyez sur <strong>ENTRÉE</strong> pour commencer.
+      </p>
+    `)],
+    conditional_function: isTristesse
+  });
+
+  // Séquences colère (bis)
+  sequences.forEach(seq => {
+    tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs_BIS)], conditional_function: isTristesse });
+  });
+
+  // Affect 3 — post-colère
+  tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
+  makeAffectBlock('emotion3_bis', 'affect3_bis_rating', true).forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isTristesse }));
+  makeDatBlock('dat5_images', 'slider_dat5_rating').forEach(t =>
+    tl.push({ timeline: [t], conditional_function: isTristesse }));
+
+  // ══════════════════════════════════════════════════════════════
+  //  MESURE COMPORTEMENT AGRESSIF (cover story)
+  // ══════════════════════════════════════════════════════════════
+  tl.push(enterScreen(`
+    <p style="font-size:0.88em;color:#ddd;max-width:750px;margin:0 auto;text-align:left;line-height:1.7;">
+      Avant de terminer, vous allez contribuer à la suite de cette étude.<br><br>
+      Afin d'éviter les biais liés à l'expérimentateur, chaque participant choisit la difficulté des séquences
+      que devra résoudre un prochain participant.<br><br>
+      Vous devez répartir un total de <strong>7</strong> suites entre trois niveaux :
+      <strong>Facile — Moyen — Difficile</strong><br><br>
+      Appuyez sur <strong>ENTRÉE</strong> pour continuer.
+    </p>
+  `));
+
+  tl.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '', choices: 'NO_KEYS',
+    on_load() {
+      setContent(`
+        <p style="font-size:0.95em;margin-bottom:20px;">
+          Répartissez un total de <strong>7</strong> suites entre les trois niveaux :
+        </p>
+        <div style="display:flex;justify-content:center;gap:50px;flex-wrap:wrap;">
+          ${[['agg_easy','Facile'],['agg_med','Moyen'],['agg_hard','Difficile']].map(([id,lbl]) => `
+            <div>
+              <p style="margin-bottom:6px;">${lbl}</p>
+              <input type="text" id="${id}" maxlength="1"
+                style="width:70px;font-size:1.4em;text-align:center;" autocomplete="off">
+            </div>
+          `).join('')}
+        </div>
+        <p id="agg_err" class="error-yc3" style="margin-top:14px;"></p>
+        <p class="hint-text">Appuyez sur <strong>ENTRÉE</strong> pour valider.</p>
+      `);
+      document.getElementById('agg_easy').focus();
+
+      function onKey(e) {
+        if (e.key !== 'Enter') return;
+        const f = parseInt(document.getElementById('agg_easy').value.trim());
+        const m = parseInt(document.getElementById('agg_med').value.trim());
+        const h = parseInt(document.getElementById('agg_hard').value.trim());
+        if ([f,m,h].some(v => isNaN(v) || v < 0 || v > 7)) {
+          document.getElementById('agg_err').textContent = 'Chiffres entre 0 et 7 uniquement.';
+          return;
+        }
+        if (f + m + h !== 7) {
+          document.getElementById('agg_err').textContent = 'La somme des trois valeurs doit faire 7.';
+          return;
+        }
+        document.removeEventListener('keydown', onKey);
+        capture('agg_facile', f); capture('agg_moyen', m); capture('agg_difficile', h);
+        jsPsych.finishTrial({});
+      }
+      document.addEventListener('keydown', onKey);
+    }
+  });
+
+  // ── DÉBRIEF ────────────────────────────────────────────────
+  for (const img of ['debrief_1.png', 'debrief_2.png', 'debrief_3.png']) {
+    tl.push({
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: `<img src="${img}" style="max-width:98vw;max-height:90vh;object-fit:contain;">`,
+      choices: ['Enter']
+    });
+  }
+
+  // ── LANCE ──────────────────────────────────────────────────
+  await jsPsych.run(tl);
+}
+
+runExperiment().catch(console.error);
+</script>
+</body>
+</html>
