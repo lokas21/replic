@@ -7,6 +7,7 @@
 
   <script src="https://unpkg.com/jspsych@7.3.4"></script>
   <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.3"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3"></script>
   <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css">
 
   <style>
@@ -61,6 +62,73 @@
       display: flex; justify-content: space-between;
       width: 85%; margin: 0 auto 4px; color: #aaa; font-size: 0.82em;
     }
+
+
+    /* ── Module affect / DAT / sit (YC5-inspired) ── */
+    .module-container {
+      color: #fff; max-width: 750px; margin: 0 auto; padding: 10px 20px;
+    }
+    .module-header {
+      font-size: 1.05em; font-weight: bold; margin-bottom: 28px;
+      line-height: 1.7; text-align: center;
+    }
+
+    /* Affect rows */
+    .affect-row {
+      display: flex; align-items: center;
+      margin-bottom: 22px; gap: 20px;
+    }
+    .affect-label {
+      font-size: 1.05em; font-weight: bold;
+      width: 200px; flex-shrink: 0; text-align: right;
+    }
+    .affect-slider-wrap { flex: 1; position: relative; }
+    .affect-slider-wrap input[type="range"] {
+      width: 100%; margin: 6px 0;
+      accent-color: #aaa;
+    }
+
+    /* DAT vertical rows */
+    .dat-row-v {
+      display: flex; align-items: center;
+      margin-bottom: 28px; gap: 24px;
+    }
+    .dat-img-v {
+      width: 150px; height: 120px; object-fit: contain;
+      border: 1px solid #666; background: #1a1a1a; flex-shrink: 0;
+    }
+    .dat-slider-v { flex: 1; }
+    .dat-slider-v input[type="range"] {
+      width: 100%; margin: 6px 0; accent-color: #aaa;
+    }
+
+    /* Sit controle */
+    .sit-row-v { margin-bottom: 28px; }
+    .sit-question-v {
+      font-size: 1.0em; color: #ddd; margin-bottom: 8px; line-height: 1.6;
+    }
+    .sit-slider-v input[type="range"] {
+      width: 100%; margin: 6px 0; accent-color: #aaa;
+    }
+
+    /* Tick labels */
+    .tick-labels {
+      display: flex; justify-content: space-between;
+      font-size: 0.78em; color: #aaa; margin-top: 2px;
+    }
+
+    /* Error */
+    .form-error {
+      color: #f66; font-size: 0.9em; margin-top: 10px; display: none;
+    }
+
+    /* Override jspsych survey button */
+    #jspsych-survey-html-form-next {
+      background: #444; color: #fff; border: 1px solid #888;
+      padding: 10px 36px; font-size: 1em; cursor: pointer;
+      border-radius: 4px; margin-top: 20px;
+    }
+    #jspsych-survey-html-form-next:hover { background: #666; }
 
   </style>
 </head>
@@ -194,107 +262,185 @@ function setContent(html) {
 //  BUILDERS DE TRIALS
 // ════════════════════════════════════════════════════════════════
 
-// ── Affect slider (1-9) ────────────────────────────────────────
-function makeAffectTrial(emotion, pEmo, pRate, isGreen) {
-  return {
-    type: jsPsychHtmlKeyboardResponse,
-    stimulus: '', choices: 'NO_KEYS',
-    on_load() {
-      const color = isGreen ? '#0f0' : '#f44';
-      const ticks = Array.from({length: 9}, (_, i) =>
-        `<span>${i+1}</span>`).join('');
-      setContent(`
-        <div style="margin-top:60px;">
-          <p style="font-size:1.05em;color:#ddd;line-height:1.9;margin-bottom:20px;">
-            À quelle intensité ressentez-vous à ce moment précis les émotions suivantes ?<br>
-            <em>(1 = pas du tout &nbsp;—&nbsp; 9 = extrêmement)</em>
-          </p>
-          <p style="font-size:2em;font-weight:bold;color:${color};margin:30px 0;">${emotion}</p>
-          <input type="range" id="yc3_s" min="1" max="9" step="0.1"
-            style="margin:30px auto;"
-            oninput="window._sMoved=true; document.getElementById('yc3_sv').textContent=parseFloat(this.value).toFixed(1);">
-          <div class="ticks-row" style="font-size:1em;">${ticks}</div>
-          <p style="color:#ccc;font-size:1em;margin-top:18px;">
-            Valeur sélectionnée&nbsp;: <span id="yc3_sv" style="color:#fff;font-weight:bold;">—</span>
-          </p>
-          <p id="yc3_err" class="error-yc3" style="font-size:1em;margin-top:10px;"></p>
-          <p style="color:#aaa;font-size:0.95em;margin-top:20px;">
-            Déplacez le curseur, puis appuyez sur <strong>ENTRÉE</strong>.
-          </p>
-        </div>
-      `);
-      window._sMoved = false;
-      document.getElementById('yc3_s').value = 5;
+// ════════════════════════════════════════════════════════════════
+//  AFFECT — tous les 9 items sur un seul écran (stacked)
+// ════════════════════════════════════════════════════════════════
+function makeAffectAllTrial(pEmo, pRate, isGreen) {
+  const color = isGreen ? '#0f0' : '#f44';
 
-      function onKey(e) {
-        if (e.key !== 'Enter') return;
-        if (!window._sMoved) {
-          document.getElementById('yc3_err').textContent =
-            'Merci de déplacer le curseur avant de valider.';
-          return;
-        }
-        document.removeEventListener('keydown', onKey);
-        const rating = parseFloat(document.getElementById('yc3_s').value);
-        const s = slug(emotion);
-        DATA[`${pEmo}_${s}`]  = emotion;
-        DATA[`${pRate}_${s}`] = rating;
-        jsPsych.finishTrial({ rating });
-      }
-      document.addEventListener('keydown', onKey);
-    }
-  };
-}
+  function buildHtml() {
+    const rows = EMOTION_ITEMS.map(emo => {
+      const name = slug(emo);
+      return `
+        <div class="affect-row">
+          <div class="affect-label" style="color:${color};">${emo}</div>
+          <div class="affect-slider-wrap">
+            <input type="range" name="${name}"
+              class="affect-slider required-affect"
+              min="1" max="9" step="0.1" value="5">
+            <div class="tick-labels">
+              <span>1<br><small>Pas du tout</small></span>
+              <span>5</span>
+              <span>9<br><small>Extrêmement</small></span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
 
-// ── DAT image + slider (1-5) ───────────────────────────────────
-function makeDatTrial(imgPath, pImg, pRate) {
-  return {
-    type: jsPsychHtmlKeyboardResponse,
-    stimulus: '', choices: 'NO_KEYS',
-    on_load() {
-      const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
-      setContent(`
-        <p style="font-size:0.88em;color:#ddd;">
-          Regardez ce dessin. À quel point celui-ci correspond à ce que vous auriez envie de faire maintenant ?<br>
-          <em>1 = pas du tout &nbsp;—&nbsp; 5 = tout à fait</em>
+    return `
+      <div class="module-container">
+        <p class="module-header">
+          À quelle intensité ressentez-vous à ce moment précis les émotions suivantes ?
         </p>
-        <img src="${imgPath}" style="width:230px;height:230px;object-fit:contain;margin:10px auto;display:block;">
-        <input type="range" id="yc3_s" min="1" max="5" step="0.1"
-          oninput="window._sMoved=true; document.getElementById('yc3_sv').textContent=parseFloat(this.value).toFixed(1);">
-        <div class="ticks-row">
-          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
-        </div>
-        <p class="hint-text">Valeur sélectionnée : <span id="yc3_sv" style="color:#fff;">—</span></p>
-        <p id="yc3_err" class="error-yc3"></p>
-        <p class="hint-text">Déplacez le curseur, puis appuyez sur <strong>ENTRÉE</strong>.</p>
-      `);
-      window._sMoved = false;
-      document.getElementById('yc3_s').value = 3;
+        ${rows}
+        <p class="form-error" id="affect-err">
+          Merci de déplacer tous les curseurs avant de continuer.
+        </p>
+      </div>`;
+  }
 
-      function onKey(e) {
-        if (e.key !== 'Enter') return;
-        if (!window._sMoved) {
-          document.getElementById('yc3_err').textContent =
-            'Merci de déplacer le curseur avant de valider.';
-          return;
+  return {
+    type: jsPsychSurveyHtmlForm,
+    html: buildHtml,
+    button_label: 'Continuer',
+    on_load() {
+      const moved = new Set();
+      document.querySelectorAll('.required-affect').forEach(s => {
+        s.addEventListener('input', () => moved.add(s.name));
+      });
+      const btn = document.getElementById('jspsych-survey-html-form-next');
+      if (btn) btn.addEventListener('click', function(e) {
+        if (moved.size < EMOTION_ITEMS.length) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          document.getElementById('affect-err').style.display = 'block';
         }
-        document.removeEventListener('keydown', onKey);
-        const rating = parseFloat(document.getElementById('yc3_s').value);
-        const s = slug(base);
-        DATA[`${pImg}_${s}`]  = base;
-        DATA[`${pRate}_${s}`] = rating;
-        jsPsych.finishTrial({ rating });
-      }
-      document.addEventListener('keydown', onKey);
+      }, true);
+    },
+    on_finish(data) {
+      const resp = data.response || {};
+      EMOTION_ITEMS.forEach(emo => {
+        const name = slug(emo);
+        DATA[`${pEmo}_${name}`]  = emo;
+        DATA[`${pRate}_${name}`] = parseFloat(resp[name]) || 'NA';
+      });
     }
   };
 }
 
-// ── Blocs shufflés ────────────────────────────────────────────
-function makeAffectBlock(pEmo, pRate, isGreen) {
-  return shuffle(EMOTION_ITEMS).map(e => makeAffectTrial(e, pEmo, pRate, isGreen));
+// ════════════════════════════════════════════════════════════════
+//  DAT — 4 images empilées verticalement
+// ════════════════════════════════════════════════════════════════
+function makeDatAllTrial(pImg, pRate) {
+  let _imgs = [];
+
+  function buildHtml() {
+    _imgs = shuffle(DAT_IMAGES).slice(0, 2);  // 2 images tirées aléatoirement parmi 4
+    const rows = _imgs.map(imgPath => {
+      const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
+      const name = slug(base);
+      return `
+        <div class="dat-row-v">
+          <img src="${imgPath}" class="dat-img-v" alt="${base}">
+          <div class="dat-slider-v">
+            <input type="range" name="${name}"
+              class="required-dat"
+              min="1" max="5" step="0.1" value="3">
+            <div class="tick-labels">
+              <span>1<br><small>Pas du tout</small></span>
+              <span>3</span>
+              <span>5<br><small>Tout à fait</small></span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="module-container">
+        <p class="module-header">
+          Regardez ces dessins. À quel point chacun correspond à ce que vous auriez envie de faire maintenant ?
+        </p>
+        ${rows}
+        <p class="form-error" id="dat-err">
+          Merci de déplacer tous les curseurs avant de continuer.
+        </p>
+      </div>`;
+  }
+
+  return {
+    type: jsPsychSurveyHtmlForm,
+    html: buildHtml,
+    button_label: 'Continuer',
+    on_load() {
+      const moved = new Set();
+      document.querySelectorAll('.required-dat').forEach(s => {
+        s.addEventListener('input', () => moved.add(s.name));
+      });
+      const btn = document.getElementById('jspsych-survey-html-form-next');
+      if (btn) btn.addEventListener('click', function(e) {
+        if (moved.size < 2) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          document.getElementById('dat-err').style.display = 'block';
+        }
+      }, true);
+    },
+    on_finish(data) {
+      const resp = data.response || {};
+      _imgs.forEach(imgPath => {
+        const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
+        const name = slug(base);
+        DATA[`${pImg}_${name}`]  = base;
+        DATA[`${pRate}_${name}`] = parseFloat(resp[name]) || 'NA';
+      });
+    }
+  };
 }
-function makeDatBlock(pImg, pRate) {
-  return shuffle(DAT_IMAGES).map(img => makeDatTrial(img, pImg, pRate));
+
+// ════════════════════════════════════════════════════════════════
+//  SIT_CONTROLE — contrôle perçu sur la situation (CPM)
+// ════════════════════════════════════════════════════════════════
+function makeSitControleTrial(prefix) {
+  return {
+    type: jsPsychSurveyHtmlForm,
+    html: `
+      <div class="module-container">
+        <p class="module-header">
+          En pensant à ce que vous venez de ressentir…
+        </p>
+        <div class="sit-row-v">
+          <p class="sit-question-v">
+            « Dans quelle mesure vous sentez-vous en contrôle de cette expérience en ce moment ? »
+          </p>
+          <div class="sit-slider-v">
+            <input type="range" name="sit_controle"
+              class="required-sit"
+              min="0" max="100" step="0.1" value="50">
+            <div class="tick-labels">
+              <span>Aucun contrôle</span>
+              <span>Contrôle total</span>
+            </div>
+          </div>
+        </div>
+        <p class="form-error" id="sit-err">
+          Merci de déplacer le curseur avant de continuer.
+        </p>
+      </div>`,
+    button_label: 'Continuer',
+    on_load() {
+      let moved = false;
+      document.querySelector('.required-sit').addEventListener('input', () => { moved = true; });
+      const btn = document.getElementById('jspsych-survey-html-form-next');
+      if (btn) btn.addEventListener('click', function(e) {
+        if (!moved) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          document.getElementById('sit-err').style.display = 'block';
+        }
+      }, true);
+    },
+    on_finish(data) {
+      const val = parseFloat((data.response || {}).sit_controle);
+      capture(`${prefix}_sit_controle`, isNaN(val) ? 'NA' : val);
+    }
+  };
 }
 
 // ── Consigne affect (8 s) ─────────────────────────────────────
@@ -643,8 +789,9 @@ async function runExperiment() {
   //  ÉVALUATION AFFECTIVE BASELINE
   // ────────────────────────────────────────────────────────────
   tl.push(aff_consigne);
-  makeAffectBlock('emotion', 'affect_rating', false).forEach(t => tl.push(t));
-  makeDatBlock('dat_images', 'slider_dat1_rating').forEach(t => tl.push(t));
+  tl.push(makeAffectAllTrial('emotion', 'affect_rating', false));
+  tl.push(makeDatAllTrial('dat_images', 'slider_dat1_rating'));
+  tl.push(makeSitControleTrial('t1'));
 
   // ══════════════════════════════════════════════════════════════
   //  BRANCHE A  —  COLÈRE D'ABORD
@@ -674,20 +821,18 @@ async function runExperiment() {
 
   // Affect 2 — post-colère
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  makeAffectBlock('emotion2', 'affect2_rating', true).forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isColere }));
-  makeDatBlock('dat2_images', 'slider_dat2_rating').forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isColere }));
+  tl.push({ timeline: [makeAffectAllTrial('emotion2', 'affect2_rating', true)], conditional_function: isColere });
+  tl.push({ timeline: [makeDatAllTrial('dat2_images', 'slider_dat2_rating')], conditional_function: isColere });
+  tl.push({ timeline: [makeSitControleTrial('t2')], conditional_function: isColere });
 
   // Induction émotionnelle
   tl.push({ timeline: [makeEmoInduction()], conditional_function: isColere });
 
   // Affect 3 — post-emo
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  makeAffectBlock('emotion3', 'affect3_rating', true).forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isColere }));
-  makeDatBlock('dat3_images', 'slider_dat3_rating').forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isColere }));
+  tl.push({ timeline: [makeAffectAllTrial('emotion3', 'affect3_rating', true)], conditional_function: isColere });
+  tl.push({ timeline: [makeDatAllTrial('dat3_images', 'slider_dat3_rating')], conditional_function: isColere });
+  tl.push({ timeline: [makeSitControleTrial('t3')], conditional_function: isColere });
 
   // ══════════════════════════════════════════════════════════════
   //  BRANCHE B  —  TRISTESSE D'ABORD
@@ -699,10 +844,9 @@ async function runExperiment() {
 
   // Affect 2 — post-emo
   tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
-  makeAffectBlock('emotion2_bis', 'affect2_bis_rating', true).forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isTristesse }));
-  makeDatBlock('dat4_images', 'slider_dat4_rating').forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isTristesse }));
+  tl.push({ timeline: [makeAffectAllTrial('emotion2_bis', 'affect2_bis_rating', true)], conditional_function: isTristesse });
+  tl.push({ timeline: [makeDatAllTrial('dat4_images', 'slider_dat4_rating')], conditional_function: isTristesse });
+  tl.push({ timeline: [makeSitControleTrial('t4')], conditional_function: isTristesse });
 
   // Consigne tâche nombres (bis)
   tl.push({
@@ -723,10 +867,9 @@ async function runExperiment() {
 
   // Affect 3 — post-colère
   tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
-  makeAffectBlock('emotion3_bis', 'affect3_bis_rating', true).forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isTristesse }));
-  makeDatBlock('dat5_images', 'slider_dat5_rating').forEach(t =>
-    tl.push({ timeline: [t], conditional_function: isTristesse }));
+  tl.push({ timeline: [makeAffectAllTrial('emotion3_bis', 'affect3_bis_rating', true)], conditional_function: isTristesse });
+  tl.push({ timeline: [makeDatAllTrial('dat5_images', 'slider_dat5_rating')], conditional_function: isTristesse });
+  tl.push({ timeline: [makeSitControleTrial('t5')], conditional_function: isTristesse });
 
   // ══════════════════════════════════════════════════════════════
   //  MESURE COMPORTEMENT AGRESSIF (cover story)
