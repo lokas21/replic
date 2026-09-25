@@ -283,6 +283,7 @@ function getSonaIdFromUrl() {
 // pas accès au compte. Compte sur les serveurs européens (eapi).
 const PCLOUD_UPLOAD_CODE = 'kZ7AJk7ZfbQK2FepAukkOuIpwM1vFytmDEzX';
 const PCLOUD_HOSTS       = ['https://eapi.pcloud.com', 'https://api.pcloud.com']; // eapi d'abord, api en secours
+let   PCLOUD_LAST_ERRORS = [];   // messages d'erreur pour diagnostic (affichés à l'écran final)
 
 function buildCSV() {
   capture('anger_rt_enter_ms',     meanMs(ANGER_RTs));
@@ -325,8 +326,10 @@ async function uploadCsvToPcloud() {
       const d = await r.json();
       if (d.result === 0) { console.log('✅ Upload pCloud réussi (' + host + ') :', filename); return true; }
       console.error('❌ Erreur upload pCloud (' + host + ') :', d);
+      PCLOUD_LAST_ERRORS.push(host + ' → ' + JSON.stringify(d));
     } catch (e) {
       console.error('❌ Erreur réseau pCloud (' + host + ') :', e);
+      PCLOUD_LAST_ERRORS.push(host + ' → réseau : ' + (e && e.message ? e.message : String(e)));
     }
   }
   downloadCSV(csv, filename);  // secours
@@ -783,13 +786,15 @@ async function runExperiment() {
       if (sonaId) {
         el.innerHTML = `<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;">
           <p>Merci pour votre participation.</p>
-          <p>Vous allez être redirigé(e) sur SONA pour obtenir votre crédit dans 5 secondes.</p>
+          ${ok ? '' : '<p style="color:#f88;font-size:0.85em;">Envoi automatique échoué (fichier téléchargé localement).<br>Diagnostic : ' + PCLOUD_LAST_ERRORS.map(x => x.replace(/</g,'&lt;')).join('<br>') + '</p>'}
+          <p>Vous allez être redirigé(e) sur SONA pour obtenir votre crédit dans ${ok ? 5 : 20} secondes.</p>
           <p>Ne quittez pas la page.</p></div>`;
-        setTimeout(() => window.location.assign(SONA_COMPLETION_BASE + encodeURIComponent(sonaId)), 5000);
+        setTimeout(() => window.location.assign(SONA_COMPLETION_BASE + encodeURIComponent(sonaId)), ok ? 5000 : 20000);
       } else {
         el.innerHTML = '<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;"><p>Merci pour votre participation.</p>' +
           (ok ? '<p>Vos réponses ont été enregistrées. Vous pouvez fermer la page.</p>'
-              : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>') +
+              : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>' +
+                '<p style="color:#f88;font-size:0.85em;">Diagnostic : ' + PCLOUD_LAST_ERRORS.map(x => x.replace(/</g,'&lt;')).join('<br>') + '</p>') +
           '</div>';
       }
     }
