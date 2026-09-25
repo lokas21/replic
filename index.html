@@ -140,10 +140,20 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════
-   YC3  —  jsPsych 7  —  URL unique, allocation automatique
+   YC3  —  jsPsych 7  —  URL unique, allocation par paramètre d'URL
    ═══════════════════════════════════════════════════════════════════
 
-   Allocation aléatoire stratifiée — 100 % dans le script, aucun serveur.
+   Allocation des conditions :
+     - Si l'URL contient ?cond=1 … ?cond=8, la cellule correspondante
+       est attribuée (voir ALLOCATION_CELLS). C'est le mode recommandé :
+       distribuer les 8 liens en rotation garantit l'équilibre.
+     - Sinon, tirage aléatoire simple parmi les 8 cellules (secours).
+   Aucun serveur d'allocation ; un script côté client ne peut PAS
+   garantir seul l'équilibre entre participants.
+
+   Données : envoyées sur pCloud (dossier /YC3_data) ; téléchargement
+   local en secours si l'envoi échoue.
+   Crédits : redirection SONA si l'URL contient ?sona_id=…
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────────
@@ -151,9 +161,9 @@
    ─────────────────────────────────────────────────────────────────
    sequences_Frustration.csv   — colonne "sequence"
    sequences_Controle.csv      — colonne "sequence"
-   welcome_1.png / welcome_2.png
-   debrief_1.png / debrief_2.png / debrief_3.png
    dat_images/ApT1.png, ApT2.png, AvR1.png, AvR2.png
+   (Les écrans d'accueil et de débriefing sont en HTML inline :
+    aucune image n'est nécessaire pour eux.)
    ───────────────────────────────────────────────────────────────── */
 
 // ────────────────────────────────────────────────────────────────
@@ -168,6 +178,12 @@ let jsPsych;  // déclaré globalement pour être accessible depuis les trial bu
 const DATA      = {};
 const ANGER_RTs     = [];
 const ANGER_RTs_BIS = [];
+
+// ────────────────────────────────────────────────────────────────
+//  PARAMÈTRES
+// ────────────────────────────────────────────────────────────────
+const AGE_MIN = 18;   // âge minimum accepté (années révolues)
+const AGE_MAX = 100;  // borne de plausibilité
 
 // ────────────────────────────────────────────────────────────────
 //  UTILITAIRES
@@ -212,6 +228,31 @@ function parseCSV(text) {
   });
 }
 
+// Vérifie qu'une date jj.mm.aaaa existe réellement et calcule l'âge.
+// Retourne { ok, age, msg }.
+function validateBirthDate(raw) {
+  const parts = raw.split('.');
+  if (parts.length !== 3) return { ok: false, msg: '❌ Format invalide. Utilisez : jj.mm.aaaa' };
+  const [js, ms, as] = parts;
+  if (!/^\d{2}$/.test(js) || !/^\d{2}$/.test(ms) || !/^\d{4}$/.test(as))
+    return { ok: false, msg: '❌ Format invalide. Utilisez : jj.mm.aaaa' };
+  const j = parseInt(js, 10), m = parseInt(ms, 10), a = parseInt(as, 10);
+  // Date réelle : on construit la date et on vérifie qu'elle n'a pas été
+  // "normalisée" (ex. 31.02 devient 03.03).
+  const d = new Date(a, m - 1, j);
+  if (d.getFullYear() !== a || d.getMonth() !== m - 1 || d.getDate() !== j)
+    return { ok: false, msg: '❌ Cette date n\'existe pas.' };
+  const today = new Date();
+  if (d > today) return { ok: false, msg: '❌ La date ne peut pas être dans le futur.' };
+  let age = today.getFullYear() - a;
+  const beforeBirthday = (today.getMonth() < m - 1) ||
+                         (today.getMonth() === m - 1 && today.getDate() < j);
+  if (beforeBirthday) age--;
+  if (age < AGE_MIN) return { ok: false, msg: `❌ Vous devez avoir au moins ${AGE_MIN} ans pour participer.` };
+  if (age > AGE_MAX) return { ok: false, msg: '❌ Date de naissance invraisemblable. Vérifiez la saisie.' };
+  return { ok: true, age };
+}
+
 // ── Participant ID ───────────────────────────────────────────────
 (function() {
   const d = new Date();
@@ -220,20 +261,81 @@ function parseCSV(text) {
   capture('participant_id', pid);
 })();
 
-// ── Sauvegarde des données (CSV local) ─────────────────────────────
-function downloadCSV() {
+// ── SONA — validation des crédits ────────────────────────────────
+// SONA doit appeler l'étude avec ?sona_id=%SURVEY_CODE% (compatible
+// avec ?cond=). À la fin, redirection vers l'URL de crédit.
+const SONA_EXPERIMENT_ID = '299';
+const SONA_CREDIT_TOKEN  = '2a36c187392d43339c0ea8a2ce8bccbe';
+const SONA_COMPLETION_BASE =
+  'https://unil-ip.sona-systems.com/webstudy_credit.aspx?experiment_id=' +
+  SONA_EXPERIMENT_ID + '&credit_token=' + SONA_CREDIT_TOKEN + '&survey_code=';
+
+function getSonaIdFromUrl() {
+  try {
+    const v = new URLSearchParams(window.location.search).get('sona_id');
+    return v ? v : '';
+  } catch (e) { return ''; }
+}
+
+// ── pCloud — token permanent, dossier /YC3_data ───────────────────
+const PCLOUD_TOKEN = 'Q6BrW7ZOTx2ZMiUBQc6awXfW8vljwtaGoutiYXGy';
+const PCLOUD_PATH  = '/YC3_data';   // à la racine du pCloud (créé automatiquement si absent)
+
+function buildCSV() {
   capture('anger_rt_enter_ms',     meanMs(ANGER_RTs));
   capture('anger_rt_enter_ms_bis', meanMs(ANGER_RTs_BIS));
   const keys = Object.keys(DATA);
-  const csv  = [
+  return [
     keys.join(','),
     keys.map(k => `"${String(DATA[k]).replace(/"/g,'""')}"`).join(',')
   ].join('\n');
+}
+
+function downloadCSV(csv, filename) {
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `YC3_${DATA.participant_id || 'anon'}_participants.csv`;
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// Envoie le CSV sur pCloud. Retourne true si réussi, false sinon
+// (dans ce cas, téléchargement local en secours).
+async function uploadCsvToPcloud() {
+  const sonaId      = getSonaIdFromUrl();
+  const submittedAt = new Date().toISOString();
+  capture('sona_id',      sonaId);
+  capture('submitted_at', submittedAt);
+
+  const csv      = buildCSV();
+  const safeSona = sonaId ? sonaId.replace(/[^a-zA-Z0-9_-]/g, '') : 'no_sona';
+  const filename = `YC3_${safeSona}_${submittedAt.replace(/[:.]/g, '-')}.csv`;
+
+  const fd = new FormData();
+  fd.append('file', new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename);
+  try {
+    // 1. folderid de /YC3_data (le dossier est créé s'il n'existe pas)
+    const rf = await fetch(
+      'https://eapi.pcloud.com/createfolderifnotexists?auth=' + PCLOUD_TOKEN +
+      '&path=' + encodeURIComponent(PCLOUD_PATH));
+    const jf = await rf.json();
+    if (jf.result !== 0 || !jf.metadata || !jf.metadata.folderid) {
+      console.error('❌ Erreur dossier pCloud :', jf);
+    } else {
+      // 2. envoi ; renameifexists=1 → jamais d'écrasement
+      const r = await fetch(
+        'https://eapi.pcloud.com/uploadfile?auth=' + PCLOUD_TOKEN +
+        '&folderid=' + jf.metadata.folderid + '&renameifexists=1',
+        { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.result === 0) { console.log('✅ Upload pCloud réussi :', filename); return true; }
+      console.error('❌ Erreur upload pCloud :', d);
+    }
+  } catch (e) {
+    console.error('❌ Erreur réseau pCloud :', e);
+  }
+  downloadCSV(csv, filename);  // secours
+  return false;
 }
 
 
@@ -268,7 +370,7 @@ function setContent(html) {
 // ════════════════════════════════════════════════════════════════
 //  AFFECT — tous les 9 items sur un seul écran (stacked)
 // ════════════════════════════════════════════════════════════════
-function makeAffectAllTrial(pEmo, pRate, _unused) {
+function makeAffectAllTrial(pEmo, pRate) {
   const color = '#fff';  // même couleur pour tous les items
 
   function buildHtml() {
@@ -333,7 +435,8 @@ function makeAffectAllTrial(pEmo, pRate, _unused) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  DAT — 4 images empilées verticalement
+//  DAT — 2 images empilées verticalement (1 AvR + 1 ApT tirées au
+//  hasard dans leur catégorie, ordre d'affichage aléatoire)
 // ════════════════════════════════════════════════════════════════
 function makeDatAllTrial(pImg, pRate) {
   let _imgs = [];
@@ -453,7 +556,7 @@ function makeSitControleTrial(prefix) {
   };
 }
 
-// ── Consigne affect (8 s) ─────────────────────────────────────
+// ── Écran de transition avant chaque bloc affect (3 s, sans touche) ──
 const aff_consigne = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus: '<p style="color:#fff;font-size:1.4em;line-height:2.0;">Nous nous intéressons maintenant à vos ressentis.<br><br>Répondez aux questions suivantes.</p>',
@@ -558,6 +661,29 @@ function makeEmoInduction() {
   };
 }
 
+// ── Consigne de la tâche de suites (commune aux deux branches) ─
+// La phrase sur le délai de 30 s et le feedback n'apparaît qu'en
+// condition Frustration, seule condition où le code les impose.
+function buildSequenceInstructions() {
+  const n = sequences.length;
+  const frustrationNote = (condition_groupe === 'Frustration')
+    ? `Vous disposez de <strong>30 secondes</strong> par suite ; passé ce délai, la suite suivante
+       s'affiche automatiquement. Après chaque réponse, vous verrez si elle était correcte ou non.<br><br>`
+    : '';
+  return `
+    <p style="font-size:1.15em;color:#fff;max-width:860px;margin:0 auto;text-align:left;line-height:2.1;">
+      Dans cette tâche, vous allez voir des <strong>suites de chiffres</strong>. Chaque suite suit une
+      règle logique. Votre objectif est de découvrir cette règle et de compléter la suite avec le bon chiffre.<br><br>
+      Exemple : 2 – 4 – 6 – 8 – 10 – 12 – 14 – ?<br>
+      La règle est d'ajouter 2 à chaque fois. La réponse est donc <strong>16</strong>.<br><br>
+      Tapez votre réponse (un nombre entier) dans le champ prévu, puis appuyez sur <strong>ENTRÉE</strong>
+      pour passer à la suite suivante. Il n'est pas possible de revenir en arrière.<br><br>
+      ${frustrationNote}
+      Il y a <strong>${n}</strong> suites au total.<br><br>
+      Appuyez sur <strong>ENTRÉE</strong> pour commencer.
+    </p>`;
+}
+
 // ── Ecran clavier libre (ENTER pour continuer) ────────────────
 function enterScreen(htmlContent) {
   return {
@@ -577,37 +703,53 @@ function enterScreen(htmlContent) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  POINT D'ENTRÉE PRINCIPAL  (async pour fetch allocation + CSV)
+//  POINT D'ENTRÉE PRINCIPAL  (async pour le chargement du CSV)
 // ════════════════════════════════════════════════════════════════
 async function runExperiment() {
 
-  // ── 1. ALLOCATION ALÉATOIRE STRATIFIÉE (100 % dans le script) ─────
+  // ── 1. ALLOCATION DES CONDITIONS ────────────────────────────────
   //
-  // Les 8 cellules du plan 2×2×2 sont représentées dans ALLOCATION_TABLE.
-  // La table est d'abord mélangée (Fisher-Yates sur le seed timestamp),
-  // puis un index est tiré au hasard parmi toutes les cellules.
-  // Sur N=80, chaque cellule reçoit ~10 participants en espérance.
-  // ─────────────────────────────────────────────────────────────────────
-  const ALLOCATION_TABLE = [
-    // 25 répétitions × 8 cellules = 200 entrées
-    ...Array(25).fill([
-      { cg: 'Frustration', ce: 'triste',  oc: 'colere_dabord'     },
-      { cg: 'Frustration', ce: 'triste',  oc: 'tristesse_dabord'  },
-      { cg: 'Frustration', ce: 'neutre',  oc: 'colere_dabord'     },
-      { cg: 'Frustration', ce: 'neutre',  oc: 'tristesse_dabord'  },
-      { cg: 'Controle',    ce: 'triste',  oc: 'colere_dabord'     },
-      { cg: 'Controle',    ce: 'triste',  oc: 'tristesse_dabord'  },
-      { cg: 'Controle',    ce: 'neutre',  oc: 'colere_dabord'     },
-      { cg: 'Controle',    ce: 'neutre',  oc: 'tristesse_dabord'  },
-    ]).flat()
+  // Les 8 cellules du plan 2×2×2. Le numéro (1–8) correspond à
+  // l'index + 1 et se passe dans l'URL : index.html?cond=3
+  //
+  //   1 Frustration / triste / colere_dabord
+  //   2 Frustration / triste / ecriture_dabord
+  //   3 Frustration / neutre / colere_dabord
+  //   4 Frustration / neutre / ecriture_dabord
+  //   5 Controle    / triste / colere_dabord
+  //   6 Controle    / triste / ecriture_dabord
+  //   7 Controle    / neutre / colere_dabord
+  //   8 Controle    / neutre / ecriture_dabord
+  //
+  // Distribuer les 8 liens en rotation (1,2,…,8,1,2,…) garantit
+  // l'équilibre. Sans paramètre valide : tirage aléatoire simple.
+  // ─────────────────────────────────────────────────────────────────
+  const ALLOCATION_CELLS = [
+    { cg: 'Frustration', ce: 'triste',  oc: 'colere_dabord'   },
+    { cg: 'Frustration', ce: 'triste',  oc: 'ecriture_dabord' },
+    { cg: 'Frustration', ce: 'neutre',  oc: 'colere_dabord'   },
+    { cg: 'Frustration', ce: 'neutre',  oc: 'ecriture_dabord' },
+    { cg: 'Controle',    ce: 'triste',  oc: 'colere_dabord'   },
+    { cg: 'Controle',    ce: 'triste',  oc: 'ecriture_dabord' },
+    { cg: 'Controle',    ce: 'neutre',  oc: 'colere_dabord'   },
+    { cg: 'Controle',    ce: 'neutre',  oc: 'ecriture_dabord' },
   ];
 
-  // Tirage aléatoire dans la table complète (chaque appel est indépendant)
-  const picked = ALLOCATION_TABLE[Math.floor(Math.random() * ALLOCATION_TABLE.length)];
+  const urlCond = parseInt(new URLSearchParams(window.location.search).get('cond'), 10);
+  let picked, allocMethod, cellIndex;
+  if (Number.isInteger(urlCond) && urlCond >= 1 && urlCond <= ALLOCATION_CELLS.length) {
+    cellIndex   = urlCond - 1;
+    allocMethod = 'url_param';
+  } else {
+    cellIndex   = Math.floor(Math.random() * ALLOCATION_CELLS.length);
+    allocMethod = 'simple_random';
+  }
+  picked = ALLOCATION_CELLS[cellIndex];
   condition_groupe = picked.cg;
   condition_emo    = picked.ce;
   ordre_condition  = picked.oc;
-  capture('alloc_method', 'stratified_random');
+  capture('alloc_method', allocMethod);
+  capture('alloc_cell',   cellIndex + 1);
 
   capture('condition_groupe', condition_groupe);
   capture('condition_emo',    condition_emo);
@@ -639,9 +781,22 @@ async function runExperiment() {
   // ════════════════════════════════════════════════════════════
   jsPsych = initJsPsych({
     on_finish: async function() {
-      downloadCSV();
-      document.querySelector('.jspsych-content').innerHTML =
-        '<p style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;">Thank you for your patience.</p>';
+      const el = document.querySelector('.jspsych-content');
+      el.innerHTML = '<p style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;">Enregistrement de vos réponses… Ne quittez pas la page.</p>';
+      const ok = await uploadCsvToPcloud();
+      const sonaId = getSonaIdFromUrl();
+      if (sonaId) {
+        el.innerHTML = `<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;">
+          <p>Merci pour votre participation.</p>
+          <p>Vous allez être redirigé(e) sur SONA pour obtenir votre crédit dans 5 secondes.</p>
+          <p>Ne quittez pas la page.</p></div>`;
+        setTimeout(() => window.location.assign(SONA_COMPLETION_BASE + encodeURIComponent(sonaId)), 5000);
+      } else {
+        el.innerHTML = '<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;"><p>Merci pour votre participation.</p>' +
+          (ok ? '<p>Vos réponses ont été enregistrées. Vous pouvez fermer la page.</p>'
+              : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>') +
+          '</div>';
+      }
     }
   });
 
@@ -773,21 +928,16 @@ async function runExperiment() {
 
       function onKey(e) {
         if (e.key !== 'Enter') return;
-        const raw   = (document.getElementById('age_input').value || '').trim();
-        const parts = raw.split('.');
-        if (parts.length === 3) {
-          const [j, m, a] = parts;
-          if (/^\d{2}$/.test(j) && parseInt(j) >= 1 && parseInt(j) <= 31 &&
-              /^\d{2}$/.test(m) && parseInt(m) >= 1 && parseInt(m) <= 12 &&
-              /^\d{4}$/.test(a)) {
-            document.removeEventListener('keydown', onKey);
-            capture('date_naissance', raw);
-            jsPsych.finishTrial({});
-            return;
-          }
+        const raw = (document.getElementById('age_input').value || '').trim();
+        const v   = validateBirthDate(raw);
+        if (v.ok) {
+          document.removeEventListener('keydown', onKey);
+          capture('date_naissance', raw);
+          capture('age_annees', v.age);
+          jsPsych.finishTrial({});
+          return;
         }
-        document.getElementById('age_err').textContent =
-          '❌ Format invalide. Utilisez : jj.mm.aaaa';
+        document.getElementById('age_err').textContent = v.msg;
       }
       document.addEventListener('keydown', onKey);
     }
@@ -797,30 +947,17 @@ async function runExperiment() {
   //  ÉVALUATION AFFECTIVE BASELINE
   // ────────────────────────────────────────────────────────────
   tl.push(aff_consigne);
-  tl.push(makeAffectAllTrial('emotion', 'affect_rating', false));
+  tl.push(makeAffectAllTrial('emotion', 'affect_rating'));
   tl.push(makeDatAllTrial('dat_images', 'slider_dat1_rating'));
   tl.push(makeSitControleTrial('t1'));
 
   // ══════════════════════════════════════════════════════════════
-  //  BRANCHE A  —  COLÈRE D'ABORD
+  //  BRANCHE A  —  COLÈRE D'ABORD (tâche de suites puis écriture)
   // ══════════════════════════════════════════════════════════════
   const isColere = () => ordre_condition === 'colere_dabord';
 
-  // Consigne tâche nombres
-  tl.push({
-    timeline: [enterScreen(`
-      <p style="font-size:1.15em;color:#fff;max-width:860px;margin:0 auto;text-align:left;line-height:2.1;">
-        Dans cette tâche, vous allez voir des <strong>suites de chiffres</strong>.<br><br>
-        Chaque suite suit une règle logique. Votre objectif est de la découvrir et de compléter
-        la suite avec le bon chiffre.<br><br>
-        Exemple : 2 – 4 – 6 – 8 – 10 – 12 – 14 – ?<br>
-        Solution : La règle est d'ajouter 2. La réponse est <strong>16</strong>.<br>
-        Tapez "16" puis appuyez sur ENTRÉE pour passer à la suite.<br><br>
-        Appuyez sur <strong>ENTRÉE</strong> pour commencer.
-      </p>
-    `)],
-    conditional_function: isColere
-  });
+  // Consigne tâche nombres (identique dans les deux branches)
+  tl.push({ timeline: [enterScreen(buildSequenceInstructions())], conditional_function: isColere });
 
   // Séquences colère
   _angerTrialIndex = 0;  // reset compteur pour ce bloc
@@ -830,7 +967,7 @@ async function runExperiment() {
 
   // Affect 2 — post-colère
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  tl.push({ timeline: [makeAffectAllTrial('emotion2', 'affect2_rating', true)], conditional_function: isColere });
+  tl.push({ timeline: [makeAffectAllTrial('emotion2', 'affect2_rating')], conditional_function: isColere });
   tl.push({ timeline: [makeDatAllTrial('dat2_images', 'slider_dat2_rating')], conditional_function: isColere });
   tl.push({ timeline: [makeSitControleTrial('t2')], conditional_function: isColere });
 
@@ -839,47 +976,38 @@ async function runExperiment() {
 
   // Affect 3 — post-emo
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  tl.push({ timeline: [makeAffectAllTrial('emotion3', 'affect3_rating', true)], conditional_function: isColere });
+  tl.push({ timeline: [makeAffectAllTrial('emotion3', 'affect3_rating')], conditional_function: isColere });
   tl.push({ timeline: [makeDatAllTrial('dat3_images', 'slider_dat3_rating')], conditional_function: isColere });
   tl.push({ timeline: [makeSitControleTrial('t3')], conditional_function: isColere });
 
   // ══════════════════════════════════════════════════════════════
-  //  BRANCHE B  —  TRISTESSE D'ABORD
+  //  BRANCHE B  —  ÉCRITURE D'ABORD (écriture puis tâche de suites)
   // ══════════════════════════════════════════════════════════════
-  const isTristesse = () => ordre_condition === 'tristesse_dabord';
+  const isEcriture = () => ordre_condition === 'ecriture_dabord';
 
   // Induction émotionnelle
-  tl.push({ timeline: [makeEmoInduction()], conditional_function: isTristesse });
+  tl.push({ timeline: [makeEmoInduction()], conditional_function: isEcriture });
 
   // Affect 2 — post-emo
-  tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
-  tl.push({ timeline: [makeAffectAllTrial('emotion2_bis', 'affect2_bis_rating', true)], conditional_function: isTristesse });
-  tl.push({ timeline: [makeDatAllTrial('dat4_images', 'slider_dat4_rating')], conditional_function: isTristesse });
-  tl.push({ timeline: [makeSitControleTrial('t4')], conditional_function: isTristesse });
+  tl.push({ timeline: [aff_consigne], conditional_function: isEcriture });
+  tl.push({ timeline: [makeAffectAllTrial('emotion2_bis', 'affect2_bis_rating')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeDatAllTrial('dat4_images', 'slider_dat4_rating')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeSitControleTrial('t4')], conditional_function: isEcriture });
 
-  // Consigne tâche nombres (bis)
-  tl.push({
-    timeline: [enterScreen(`
-      <p style="font-size:1.15em;color:#fff;max-width:860px;margin:0 auto;text-align:left;line-height:2.1;">
-        Vous allez maintenant voir des suites de chiffres.<br><br>
-        Exemple : 2 – 4 – 6 – 8 – 10 – 12 – 14 – ?  →  Réponse : <strong>16</strong><br><br>
-        Appuyez sur <strong>ENTRÉE</strong> pour commencer.
-      </p>
-    `)],
-    conditional_function: isTristesse
-  });
+  // Consigne tâche nombres (identique dans les deux branches)
+  tl.push({ timeline: [enterScreen(buildSequenceInstructions())], conditional_function: isEcriture });
 
   // Séquences colère (bis)
   _angerTrialIndex = 0;  // reset compteur pour ce bloc bis
   sequences.forEach(seq => {
-    tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs_BIS)], conditional_function: isTristesse });
+    tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs_BIS)], conditional_function: isEcriture });
   });
 
   // Affect 3 — post-colère
-  tl.push({ timeline: [aff_consigne], conditional_function: isTristesse });
-  tl.push({ timeline: [makeAffectAllTrial('emotion3_bis', 'affect3_bis_rating', true)], conditional_function: isTristesse });
-  tl.push({ timeline: [makeDatAllTrial('dat5_images', 'slider_dat5_rating')], conditional_function: isTristesse });
-  tl.push({ timeline: [makeSitControleTrial('t5')], conditional_function: isTristesse });
+  tl.push({ timeline: [aff_consigne], conditional_function: isEcriture });
+  tl.push({ timeline: [makeAffectAllTrial('emotion3_bis', 'affect3_bis_rating')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeDatAllTrial('dat5_images', 'slider_dat5_rating')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeSitControleTrial('t5')], conditional_function: isEcriture });
 
   // ══════════════════════════════════════════════════════════════
   //  MESURE COMPORTEMENT AGRESSIF (cover story)
