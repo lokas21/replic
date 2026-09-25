@@ -283,7 +283,7 @@ function getSonaIdFromUrl() {
 // pas accès au compte. Compte sur les serveurs européens (eapi).
 const PCLOUD_UPLOAD_CODE = 'gsN7ZvevlMpNSbabjWesvQX7kRhwUFsty';   // code du lien « Demander des fichiers » (upload link)
 const PCLOUD_HOSTS       = ['https://eapi.pcloud.com', 'https://api.pcloud.com']; // eapi d'abord, api en secours
-let   PCLOUD_LAST_ERRORS = [];   // messages d'erreur pour diagnostic (affichés à l'écran final)
+let   PCLOUD_LAST_ERRORS = [];   // messages d'erreur (console uniquement)
 
 function buildCSV() {
   capture('anger_rt_enter_ms',     meanMs(ANGER_RTs));
@@ -790,15 +790,14 @@ async function runExperiment() {
       if (sonaId && sonaId !== 'test') {
         el.innerHTML = `<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;">
           <p>Merci pour votre participation.</p>
-          ${ok ? '' : '<p style="color:#f88;font-size:0.85em;">Envoi automatique échoué (fichier téléchargé localement).<br>Diagnostic : ' + PCLOUD_LAST_ERRORS.map(x => x.replace(/</g,'&lt;')).join('<br>') + '</p>'}
-          <p>Vous allez être redirigé(e) sur SONA pour obtenir votre crédit dans ${ok ? 5 : 20} secondes.</p>
+          ${ok ? '' : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>'}
+          <p>Vous allez être redirigé(e) sur SONA pour obtenir votre crédit dans ${ok ? 5 : 15} secondes.</p>
           <p>Ne quittez pas la page.</p></div>`;
-        setTimeout(() => window.location.assign(SONA_COMPLETION_BASE + encodeURIComponent(sonaId)), ok ? 5000 : 20000);
+        setTimeout(() => window.location.assign(SONA_COMPLETION_BASE + encodeURIComponent(sonaId)), ok ? 5000 : 15000);
       } else {
         el.innerHTML = '<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;"><p>Merci pour votre participation.</p>' +
           (ok ? '<p>Vos réponses ont été enregistrées. Vous pouvez fermer la page.</p>'
-              : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>' +
-                '<p style="color:#f88;font-size:0.85em;">Diagnostic : ' + PCLOUD_LAST_ERRORS.map(x => x.replace(/</g,'&lt;')).join('<br>') + '</p>') +
+              : '<p>L\'envoi automatique a échoué : un fichier CSV a été téléchargé sur votre ordinateur. Merci de l\'envoyer à l\'adresse indiquée dans le débriefing.</p>') +
           '</div>';
       }
     }
@@ -833,7 +832,7 @@ async function runExperiment() {
       <p>Cette étude ne comporte aucun risque pour les participants.</p>
       <br>
       <p style="font-weight:bold;font-size:1.1em;">Confidentialité des données</p>
-      <p>Toutes vos réponses sont <strong>anonymes et traitées de manière confidentielle</strong>. Aucun nom ou information personnelle ne sera associé à vos données. Celles-ci seront utilisées uniquement à des fins de recherche scientifique.</p>
+      <p>Toutes vos réponses sont <strong>pseudonymisées et traitées de manière confidentielle</strong>. Aucun nom ne sera associé à vos données ; seuls votre date de naissance et un code de participation, nécessaires à la validation des crédits et à l'exercice de votre droit de retrait, y sont associés. Vos données seront utilisées uniquement à des fins de recherche scientifique.</p>
       <br>
       <p style="font-weight:bold;font-size:1.1em;">Caractère volontaire de la participation</p>
       <p>Votre participation est <strong>entièrement volontaire</strong>. Vous êtes libre de <strong>quitter l'étude à tout moment</strong>, sans devoir vous justifier. Si vous le souhaitez, vous pourrez également demander la suppression de vos données.</p>
@@ -862,7 +861,7 @@ async function runExperiment() {
           <br><br>
           <strong>1.</strong> L'utilisation des données à des fins scientifiques et la publication des résultats
           de la recherche dans des revues ou livres scientifiques, étant entendu que les données resteront
-          anonymes et qu'aucune information ne sera donnée sur mon identité.
+          pseudonymisées et qu'aucune information ne sera donnée sur mon identité.
           <br><br>
           <strong>2.</strong> L'utilisation des données à des fins pédagogiques (cours et séminaires de
           formations d'étudiants ou de professionnels soumis au secret professionnel).
