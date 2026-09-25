@@ -427,7 +427,7 @@ function makeAffectAllTrial(pRate) {
       EMOTION_ITEMS.forEach(emo => {
         const name = slug(emo);
         const val = resp[name];
-        DATA[`${pRate}_${name}`] = (val !== undefined && val !== '') ? parseFloat(val) : 'NA';
+        DATA[`${pRate}_affect_${name}`] = (val !== undefined && val !== '') ? parseFloat(val) : 'NA';
       });
     }
   };
@@ -502,8 +502,8 @@ function makeDatAllTrial(prefix) {
         const base = imgPath.split('/').pop().replace(/\.[^.]+$/, '');
         const name = slug(base);
         const cat  = base.startsWith('ApT') ? 'apt' : 'avr';
-        DATA[`${prefix}_${cat}_image`]  = base;
-        DATA[`${prefix}_${cat}_rating`] = parseFloat(resp[name]) || 'NA';
+        DATA[`${prefix}_dat_${cat}_image`]  = base;
+        DATA[`${prefix}_dat_${cat}_rating`] = parseFloat(resp[name]) || 'NA';
       });
     }
   };
@@ -964,9 +964,9 @@ async function runExperiment() {
   //  ÉVALUATION AFFECTIVE BASELINE
   // ────────────────────────────────────────────────────────────
   tl.push(aff_consigne);
-  tl.push(makeAffectAllTrial('affect_rating'));
-  tl.push(makeDatAllTrial('dat1'));
-  tl.push(makeSitControleTrial('t1'));
+  tl.push(makeAffectAllTrial('base'));
+  tl.push(makeDatAllTrial('base'));
+  tl.push(makeSitControleTrial('base'));
 
   // ══════════════════════════════════════════════════════════════
   //  BRANCHE A  —  COLÈRE D'ABORD (tâche de suites puis écriture)
@@ -982,20 +982,20 @@ async function runExperiment() {
     tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs)], conditional_function: isColere });
   });
 
-  // Affect 2 — post-colère
+  // Mesure post-suites
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  tl.push({ timeline: [makeAffectAllTrial('affect2_rating')], conditional_function: isColere });
-  tl.push({ timeline: [makeDatAllTrial('dat2')], conditional_function: isColere });
-  tl.push({ timeline: [makeSitControleTrial('t2')], conditional_function: isColere });
+  tl.push({ timeline: [makeAffectAllTrial('post_suites')], conditional_function: isColere });
+  tl.push({ timeline: [makeDatAllTrial('post_suites')], conditional_function: isColere });
+  tl.push({ timeline: [makeSitControleTrial('post_suites')], conditional_function: isColere });
 
   // Induction émotionnelle
   tl.push({ timeline: [makeEmoInduction()], conditional_function: isColere });
 
-  // Affect 3 — post-emo
+  // Mesure post-écriture
   tl.push({ timeline: [aff_consigne], conditional_function: isColere });
-  tl.push({ timeline: [makeAffectAllTrial('affect3_rating')], conditional_function: isColere });
-  tl.push({ timeline: [makeDatAllTrial('dat3')], conditional_function: isColere });
-  tl.push({ timeline: [makeSitControleTrial('t3')], conditional_function: isColere });
+  tl.push({ timeline: [makeAffectAllTrial('post_ecriture')], conditional_function: isColere });
+  tl.push({ timeline: [makeDatAllTrial('post_ecriture')], conditional_function: isColere });
+  tl.push({ timeline: [makeSitControleTrial('post_ecriture')], conditional_function: isColere });
 
   // ══════════════════════════════════════════════════════════════
   //  BRANCHE B  —  ÉCRITURE D'ABORD (écriture puis tâche de suites)
@@ -1005,11 +1005,11 @@ async function runExperiment() {
   // Induction émotionnelle
   tl.push({ timeline: [makeEmoInduction()], conditional_function: isEcriture });
 
-  // Affect 2 — post-emo
+  // Mesure post-écriture
   tl.push({ timeline: [aff_consigne], conditional_function: isEcriture });
-  tl.push({ timeline: [makeAffectAllTrial('affect2_bis_rating')], conditional_function: isEcriture });
-  tl.push({ timeline: [makeDatAllTrial('dat4')], conditional_function: isEcriture });
-  tl.push({ timeline: [makeSitControleTrial('t4')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeAffectAllTrial('post_ecriture')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeDatAllTrial('post_ecriture')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeSitControleTrial('post_ecriture')], conditional_function: isEcriture });
 
   // Consigne tâche nombres (identique dans les deux branches)
   tl.push({ timeline: [enterScreen(buildSequenceInstructions())], conditional_function: isEcriture });
@@ -1020,11 +1020,11 @@ async function runExperiment() {
     tl.push({ timeline: [makeAngerTrial(seq, ANGER_RTs_BIS)], conditional_function: isEcriture });
   });
 
-  // Affect 3 — post-colère
+  // Mesure post-suites
   tl.push({ timeline: [aff_consigne], conditional_function: isEcriture });
-  tl.push({ timeline: [makeAffectAllTrial('affect3_bis_rating')], conditional_function: isEcriture });
-  tl.push({ timeline: [makeDatAllTrial('dat5')], conditional_function: isEcriture });
-  tl.push({ timeline: [makeSitControleTrial('t5')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeAffectAllTrial('post_suites')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeDatAllTrial('post_suites')], conditional_function: isEcriture });
+  tl.push({ timeline: [makeSitControleTrial('post_suites')], conditional_function: isEcriture });
 
   // ══════════════════════════════════════════════════════════════
   //  MESURE COMPORTEMENT AGRESSIF (cover story)
