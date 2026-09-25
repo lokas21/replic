@@ -151,8 +151,8 @@
    Aucun serveur d'allocation ; un script côté client ne peut PAS
    garantir seul l'équilibre entre participants.
 
-   Données : envoyées sur pCloud (dossier /YC3_data) ; téléchargement
-   local en secours si l'envoi échoue.
+   Données : envoyées sur pCloud via le lien d'upload du dossier
+   /YC3_data ; téléchargement local en secours si l'envoi échoue.
    Crédits : redirection SONA si l'URL contient ?sona_id=…
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -277,9 +277,12 @@ function getSonaIdFromUrl() {
   } catch (e) { return ''; }
 }
 
-// ── pCloud — token permanent, dossier /YC3_data ───────────────────
-const PCLOUD_TOKEN = 'Q6BrW7ZOTx2ZMiUBQc6awXfW8vljwtaGoutiYXGy';
-const PCLOUD_PATH  = '/YC3_data';   // à la racine du pCloud (créé automatiquement si absent)
+// ── pCloud — envoi via le LIEN D'UPLOAD du dossier /YC3_data ─────
+// Le lien d'upload autorise uniquement le dépôt de fichiers dans le
+// dossier (aucune lecture, modification ni suppression) : il ne donne
+// pas accès au compte. Compte sur les serveurs européens (eapi).
+const PCLOUD_UPLOAD_CODE = 'kZ7AJk7ZfbQK2FepAukkOuIpwM1vFytmDEzX';
+const PCLOUD_HOSTS       = ['https://eapi.pcloud.com', 'https://api.pcloud.com']; // eapi d'abord, api en secours
 
 function buildCSV() {
   capture('anger_rt_enter_ms',     meanMs(ANGER_RTs));
@@ -311,28 +314,20 @@ async function uploadCsvToPcloud() {
   const safeSona = sonaId ? sonaId.replace(/[^a-zA-Z0-9_-]/g, '') : 'no_sona';
   const filename = `YC3_${safeSona}_${submittedAt.replace(/[:.]/g, '-')}.csv`;
 
-  const fd = new FormData();
-  fd.append('file', new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename);
-  try {
-    // 1. folderid de /YC3_data (le dossier est créé s'il n'existe pas)
-    const rf = await fetch(
-      'https://eapi.pcloud.com/createfolderifnotexists?auth=' + PCLOUD_TOKEN +
-      '&path=' + encodeURIComponent(PCLOUD_PATH));
-    const jf = await rf.json();
-    if (jf.result !== 0 || !jf.metadata || !jf.metadata.folderid) {
-      console.error('❌ Erreur dossier pCloud :', jf);
-    } else {
-      // 2. envoi ; renameifexists=1 → jamais d'écrasement
+  for (const host of PCLOUD_HOSTS) {
+    try {
+      const fd = new FormData();
+      fd.append('file', new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }), filename);
       const r = await fetch(
-        'https://eapi.pcloud.com/uploadfile?auth=' + PCLOUD_TOKEN +
-        '&folderid=' + jf.metadata.folderid + '&renameifexists=1',
+        host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE) +
+        '&names=' + encodeURIComponent('YC3_' + safeSona),
         { method: 'POST', body: fd });
       const d = await r.json();
-      if (d.result === 0) { console.log('✅ Upload pCloud réussi :', filename); return true; }
-      console.error('❌ Erreur upload pCloud :', d);
+      if (d.result === 0) { console.log('✅ Upload pCloud réussi (' + host + ') :', filename); return true; }
+      console.error('❌ Erreur upload pCloud (' + host + ') :', d);
+    } catch (e) {
+      console.error('❌ Erreur réseau pCloud (' + host + ') :', e);
     }
-  } catch (e) {
-    console.error('❌ Erreur réseau pCloud :', e);
   }
   downloadCSV(csv, filename);  // secours
   return false;
