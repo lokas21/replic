@@ -783,7 +783,8 @@ async function runExperiment() {
       el.innerHTML = '<p style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;">Enregistrement de vos réponses… Ne quittez pas la page.</p>';
       const ok = await uploadCsvToPcloud();
       const sonaId = getSonaIdFromUrl();
-      if (sonaId) {
+      // Mode test : ?sona_id=test → pas de redirection SONA, l'écran final reste affiché
+      if (sonaId && sonaId !== 'test') {
         el.innerHTML = `<div style="color:#fff;text-align:center;margin-top:80px;font-size:1.2em;line-height:1.8;">
           <p>Merci pour votre participation.</p>
           ${ok ? '' : '<p style="color:#f88;font-size:0.85em;">Envoi automatique échoué (fichier téléchargé localement).<br>Diagnostic : ' + PCLOUD_LAST_ERRORS.map(x => x.replace(/</g,'&lt;')).join('<br>') + '</p>'}
