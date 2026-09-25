@@ -315,23 +315,26 @@ async function uploadCsvToPcloud() {
   const safeSona = sonaId ? sonaId.replace(/[^a-zA-Z0-9_-]/g, '') : 'no_sona';
   const filename = `YC3_${safeSona}_${submittedAt.replace(/[:.]/g, '-')}.csv`;
 
+  const attempts = [];
   for (const host of PCLOUD_HOSTS) {
+    attempts.push({ host, url: host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE) + '&names=' + encodeURIComponent('YC3_' + safeSona), label: 'avec names' });
+    attempts.push({ host, url: host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE), label: 'sans names' });
+  }
+  for (const a of attempts) {
     try {
       const fd = new FormData();
       fd.append('file', new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }), filename);
-      const r = await fetch(
-        host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE) +
-        '&names=' + encodeURIComponent('YC3_' + safeSona),
-        { method: 'POST', body: fd });
+      const r = await fetch(a.url, { method: 'POST', body: fd });
       const d = await r.json();
-      if (d.result === 0) { console.log('✅ Upload pCloud réussi (' + host + ') :', filename); return true; }
-      console.error('❌ Erreur upload pCloud (' + host + ') :', d);
-      PCLOUD_LAST_ERRORS.push(host + ' → ' + JSON.stringify(d));
+      if (d.result === 0) { console.log('✅ Upload pCloud réussi (' + a.host + ', ' + a.label + ') :', filename); return true; }
+      console.error('❌ Erreur upload pCloud (' + a.host + ', ' + a.label + ') :', d);
+      PCLOUD_LAST_ERRORS.push(a.host + ' (' + a.label + ') → ' + JSON.stringify(d));
     } catch (e) {
-      console.error('❌ Erreur réseau pCloud (' + host + ') :', e);
-      PCLOUD_LAST_ERRORS.push(host + ' → réseau : ' + (e && e.message ? e.message : String(e)));
+      console.error('❌ Erreur réseau pCloud (' + a.host + ', ' + a.label + ') :', e);
+      PCLOUD_LAST_ERRORS.push(a.host + ' (' + a.label + ') → réseau : ' + (e && e.message ? e.message : String(e)));
     }
   }
+  PCLOUD_LAST_ERRORS.push('code utilisé : ' + PCLOUD_UPLOAD_CODE.slice(0, 6) + '…');
   downloadCSV(csv, filename);  // secours
   return false;
 }
