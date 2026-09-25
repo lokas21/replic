@@ -317,7 +317,7 @@ async function uploadCsvToPcloud() {
 
   const attempts = [];
   for (const host of PCLOUD_HOSTS) {
-    attempts.push({ host, url: host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE) + '&names=' + encodeURIComponent('YC3_' + safeSona), label: 'avec names' });
+    attempts.push({ host, url: host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE) + '&names=' + encodeURIComponent('YC3_' + safeSona + '_' + submittedAt.replace(/[:.]/g, '-')), label: 'avec names' });
     attempts.push({ host, url: host + '/uploadtolink?code=' + encodeURIComponent(PCLOUD_UPLOAD_CODE), label: 'sans names' });
   }
   for (const a of attempts) {
